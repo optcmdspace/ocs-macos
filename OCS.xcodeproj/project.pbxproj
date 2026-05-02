@@ -6,13 +6,32 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		5BDD43252FA5F5B1003E37A1 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = 5BDD43242FA5F5B1003E37A1 /* KeyboardShortcuts */; };
+		5BDD43282FA5F6D2003E37A1 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = 5BDD43272FA5F6D2003E37A1 /* GRDB */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		5BE56CB42FA55AAD001AB404 /* OCS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OCS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5BE56CCE2FA55BF5001AB404 /* OCS.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = OCS.xcodeproj; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		5BDD43332FA5F83B003E37A1 /* Exceptions for "OCS" folder in "OCS" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 5BE56CB32FA55AAD001AB404 /* OCS */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		5BE56CB62FA55AAD001AB404 /* OCS */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5BDD43332FA5F83B003E37A1 /* Exceptions for "OCS" folder in "OCS" target */,
+			);
 			path = OCS;
 			sourceTree = "<group>";
 		};
@@ -23,6 +42,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5BDD43252FA5F5B1003E37A1 /* KeyboardShortcuts in Frameworks */,
+				5BDD43282FA5F6D2003E37A1 /* GRDB in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -42,6 +63,11 @@
 			children = (
 				5BE56CB42FA55AAD001AB404 /* OCS.app */,
 			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		5BE56CCF2FA55BF5001AB404 /* Products */ = {
+			isa = PBXGroup;
 			name = Products;
 			sourceTree = "<group>";
 		};
@@ -65,6 +91,8 @@
 			);
 			name = OCS;
 			packageProductDependencies = (
+				5BDD43242FA5F5B1003E37A1 /* KeyboardShortcuts */,
+				5BDD43272FA5F6D2003E37A1 /* GRDB */,
 			);
 			productName = OCS;
 			productReference = 5BE56CB42FA55AAD001AB404 /* OCS.app */;
@@ -94,9 +122,19 @@
 			);
 			mainGroup = 5BE56CAB2FA55AAD001AB404;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				5BDD43232FA5F5B1003E37A1 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
+				5BDD43262FA5F6D2003E37A1 /* XCRemoteSwiftPackageReference "GRDB" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5BE56CB52FA55AAD001AB404 /* Products */;
 			projectDirPath = "";
+			projectReferences = (
+				{
+					ProductGroup = 5BE56CCF2FA55BF5001AB404 /* Products */;
+					ProjectRef = 5BE56CCE2FA55BF5001AB404 /* OCS.xcodeproj */;
+				},
+			);
 			projectRoot = "";
 			targets = (
 				5BE56CB32FA55AAD001AB404 /* OCS */,
@@ -259,11 +297,15 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OCS/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = space.optcmd.OCS;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -273,7 +315,7 @@
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
@@ -291,11 +333,15 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OCS/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = space.optcmd.OCS;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -305,7 +351,7 @@
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Release;
 		};
@@ -331,6 +377,38 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		5BDD43232FA5F5B1003E37A1 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sindresorhus/KeyboardShortcuts";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.4.0;
+			};
+		};
+		5BDD43262FA5F6D2003E37A1 /* XCRemoteSwiftPackageReference "GRDB" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.10.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		5BDD43242FA5F5B1003E37A1 /* KeyboardShortcuts */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5BDD43232FA5F5B1003E37A1 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */;
+			productName = KeyboardShortcuts;
+		};
+		5BDD43272FA5F6D2003E37A1 /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5BDD43262FA5F6D2003E37A1 /* XCRemoteSwiftPackageReference "GRDB" */;
+			productName = GRDB;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 5BE56CAC2FA55AAD001AB404 /* Project object */;
 }
