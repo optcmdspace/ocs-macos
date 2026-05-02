@@ -2,35 +2,26 @@ import AppKit
 import Foundation
 
 @MainActor
-final class CapturePanelController: NSObject, NSTextFieldDelegate {
+final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
     private let panel: CapturePanel
-    private let textField: NSTextField
+    private let textField: CaptureField
+    private let prompt: CapturePrompt
+    private let footerHeight: CGFloat
+    private let fieldHeightConstraint: NSLayoutConstraint
     private let dispatch: @Sendable (_ rawText: String) async throws -> UUID
 
     init(dispatch: @escaping @Sendable (_ rawText: String) async throws -> UUID) {
-        let size = NSSize(width: 640, height: 60)
+        let lineHeight = ceil(Applied.Capture.bodyFont.boundingRectForFont.height)
+        let footerHeight = ceil(Applied.Capture.captionFont.boundingRectForFont.height)
+        let initialHeight = Applied.Capture.verticalPadding
+            + lineHeight
+            + Applied.Capture.footerGap
+            + footerHeight
+            + Applied.Capture.footerBottomInset
+        let size = NSSize(width: Applied.Capture.panelWidth, height: initialHeight)
         let rect = NSRect(origin: .zero, size: size)
-        let font = NSFont.monospacedSystemFont(ofSize: 18, weight: .regular)
 
-        let panel: CapturePanel = {
-            let p = CapturePanel(
-                contentRect: rect,
-                styleMask: [.borderless, .nonactivatingPanel],
-                backing: .buffered,
-                defer: false
-            )
-            p.level = .floating
-            p.isFloatingPanel = true
-            p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
-            p.hidesOnDeactivate = false
-            p.isMovableByWindowBackground = false
-            p.backgroundColor = .clear
-            p.isOpaque = false
-            p.hasShadow = true
-            p.titleVisibility = .hidden
-            p.titlebarAppearsTransparent = true
-            return p
-        }()
+        let panel = CapturePanel(contentRect: rect)
 
         let background: NSVisualEffectView = {
             let v = NSVisualEffectView(frame: rect)
@@ -38,69 +29,120 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate {
             v.blendingMode = .behindWindow
             v.state = .active
             v.wantsLayer = true
-            v.layer?.cornerRadius = 10
+            v.layer?.cornerRadius = Applied.Capture.cornerRadius
             v.layer?.masksToBounds = true
-            v.layer?.borderWidth = 1
-            v.layer?.borderColor = NSColor.white.withAlphaComponent(0.08).cgColor
+            v.layer?.borderWidth = Applied.Capture.borderWidth
+            v.layer?.borderColor = Applied.Capture.borderColor.cgColor
             v.autoresizingMask = [.width, .height]
             return v
         }()
 
-        let prompt: NSTextField = {
-            let label = NSTextField(labelWithString: "❯")
-            label.font = font
-            label.textColor = NSColor.secondaryLabelColor
-            label.translatesAutoresizingMaskIntoConstraints = false
-            return label
+        let tint: NSView = {
+            let v = NSView(frame: rect)
+            v.wantsLayer = true
+            v.layer?.backgroundColor = Applied.Capture.tintColor.cgColor
+            v.autoresizingMask = [.width, .height]
+            return v
         }()
 
-        let field: NSTextField = {
-            let f = NSTextField()
-            f.isBezeled = false
-            f.isBordered = false
-            f.drawsBackground = false
-            f.focusRingType = .none
-            f.font = font
-            f.textColor = NSColor.labelColor
-            f.placeholderAttributedString = NSAttributedString(
-                string: "capture",
-                attributes: [
-                    .font: font,
-                    .foregroundColor: NSColor.tertiaryLabelColor,
-                ]
-            )
-            f.translatesAutoresizingMaskIntoConstraints = false
-            return f
-        }()
+        let prompt = CapturePrompt()
+        let field = CaptureField()
+        let footer = CaptureFooter()
 
+        background.addSubview(tint)
         background.addSubview(prompt)
         background.addSubview(field)
+        background.addSubview(footer)
+
+        let fieldHeight = field.heightAnchor.constraint(equalToConstant: lineHeight)
 
         NSLayoutConstraint.activate([
-            prompt.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 20),
-            prompt.centerYAnchor.constraint(equalTo: background.centerYAnchor),
-            field.leadingAnchor.constraint(equalTo: prompt.trailingAnchor, constant: 12),
-            field.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -20),
-            field.centerYAnchor.constraint(equalTo: background.centerYAnchor),
+            prompt.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: Applied.Capture.horizontalPadding),
+            prompt.firstBaselineAnchor.constraint(equalTo: field.firstBaselineAnchor),
+            field.leadingAnchor.constraint(equalTo: prompt.trailingAnchor, constant: Applied.Capture.promptGap),
+            field.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -Applied.Capture.horizontalPadding),
+            field.topAnchor.constraint(equalTo: background.topAnchor, constant: Applied.Capture.verticalPadding),
+            fieldHeight,
+            footer.topAnchor.constraint(equalTo: field.bottomAnchor, constant: Applied.Capture.footerGap),
+            footer.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -Applied.Capture.horizontalPadding),
+            footer.bottomAnchor.constraint(equalTo: background.bottomAnchor, constant: -Applied.Capture.footerBottomInset),
         ])
 
         panel.contentView = background
 
         self.panel = panel
         self.textField = field
+        self.prompt = prompt
+        self.footerHeight = footerHeight
+        self.fieldHeightConstraint = fieldHeight
         self.dispatch = dispatch
 
         super.init()
 
         field.delegate = self
+        panel.delegate = self
+        panel.onCancel = { [weak self] in self?.dismiss() }
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        updatePanelHeight()
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        dismiss()
     }
 
     func show() {
         textField.stringValue = ""
+        resetPanelHeight()
         position()
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(textField)
+    }
+
+    private func lineHeight() -> CGFloat {
+        ceil(Applied.Capture.bodyFont.boundingRectForFont.height)
+    }
+
+    private func panelHeight(forFieldHeight fieldHeight: CGFloat) -> CGFloat {
+        Applied.Capture.verticalPadding
+            + fieldHeight
+            + Applied.Capture.footerGap
+            + footerHeight
+            + Applied.Capture.footerBottomInset
+    }
+
+    private func resetPanelHeight() {
+        let h = lineHeight()
+        fieldHeightConstraint.constant = h
+        setPanelHeight(panelHeight(forFieldHeight: h))
+    }
+
+    private func updatePanelHeight() {
+        let promptWidth = ceil(prompt.intrinsicContentSize.width)
+        let availableWidth = Applied.Capture.panelWidth - 2 * Applied.Capture.horizontalPadding - promptWidth - Applied.Capture.promptGap
+        guard availableWidth > 0 else { return }
+        let text = textField.stringValue.isEmpty ? " " : textField.stringValue
+        let bounding = (text as NSString).boundingRect(
+            with: NSSize(width: availableWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: Applied.Capture.bodyFont]
+        )
+        let fieldH = max(lineHeight(), ceil(bounding.height))
+        fieldHeightConstraint.constant = fieldH
+        setPanelHeight(panelHeight(forFieldHeight: fieldH))
+    }
+
+    private func setPanelHeight(_ newHeight: CGFloat) {
+        let current = panel.frame
+        if abs(current.height - newHeight) < 0.5 { return }
+        let newY = current.maxY - newHeight
+        panel.setFrame(
+            NSRect(x: current.origin.x, y: newY, width: current.width, height: newHeight),
+            display: true,
+            animate: false
+        )
     }
 
     func dismiss() {
