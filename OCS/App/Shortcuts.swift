@@ -1,8 +1,3 @@
-//
-//  Shortcuts.swift
-//  OCS
-//
-
 import AppKit
 import KeyboardShortcuts
 

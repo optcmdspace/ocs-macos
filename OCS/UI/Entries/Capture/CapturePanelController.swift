@@ -1,22 +1,13 @@
-//
-//  CapturePanel.swift
-//  OCS
-//
-
 import AppKit
-
-@MainActor
-final class CapturePanel: NSPanel {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
-}
+import Foundation
 
 @MainActor
 final class CapturePanelController: NSObject, NSTextFieldDelegate {
     private let panel: CapturePanel
     private let textField: NSTextField
+    private let dispatch: @Sendable (_ rawText: String) async throws -> UUID
 
-    override init() {
+    init(dispatch: @escaping @Sendable (_ rawText: String) async throws -> UUID) {
         let size = NSSize(width: 640, height: 60)
         let rect = NSRect(origin: .zero, size: size)
         let font = NSFont.monospacedSystemFont(ofSize: 18, weight: .regular)
@@ -97,6 +88,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate {
 
         self.panel = panel
         self.textField = field
+        self.dispatch = dispatch
 
         super.init()
 
@@ -129,8 +121,14 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate {
             dismiss()
             return
         }
-        // TODO: persist via the event.
-        NSLog("captured: %@", text)
+        let dispatch = self.dispatch
+        Task.detached {
+            do {
+                _ = try await dispatch(text)
+            } catch {
+                NSLog("OCS: capture failed: %@", String(describing: error))
+            }
+        }
         textField.stringValue = ""
         dismiss()
     }

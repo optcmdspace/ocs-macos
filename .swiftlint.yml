@@ -1,0 +1,120 @@
+# SwiftLint config for OCS.
+#
+# Only the CQRS architectural rules are active. Default style rules are off
+# (no `only_rules` entries below the custom set), so this lint exists purely
+# to enforce the boundaries described in CQRS.md. Add stylistic rules later
+# if/when desired.
+#
+# OCS uses a package-by-aggregate layout: every aggregate lives at
+# `OCS/Domains/<Aggregate>/` with `Model | Events | Write | Read` subfolders,
+# plus top-level `Shared/`, `Collaborators/`, `Persistence/`, `UI/`, and `App/`.
+# Type identification is suffix-based (`*Command.swift`, `*Query.swift`,
+# `*Handler.swift`) anchored under the appropriate folder.
+#
+# Each rule corresponds to a guideline (G1..G20) in CQRS.md.
+
+only_rules:
+  - cqrs_no_grdb_in_handlers              # G5
+  - cqrs_no_grdb_in_domain                # G5
+  - cqrs_no_appkit_in_domains             # G5
+  - cqrs_command_immutable                # G1
+  - cqrs_query_immutable                  # G1
+  - cqrs_event_immutable                  # G1
+  - cqrs_readmodel_immutable              # G1
+  - cqrs_no_date_in_handlers              # G8
+  - cqrs_no_uuid_in_handlers              # G8
+  - cqrs_no_class_in_value_categories     # G1
+  - cqrs_event_inserts_only_in_store      # G6
+  - cqrs_projection_inserts_only_in_projector  # G7
+
+included:
+  - OCS
+
+excluded:
+  - OCS/Assets.xcassets
+
+custom_rules:
+  cqrs_no_grdb_in_handlers:
+    name: "Handlers must not import GRDB"
+    included: ".*/Domains/[^/]+/(Write|Read)/.*Handler\\.swift$"
+    regex: '(?m)^import[ \t]+GRDB[ \t]*$'
+    message: "Handlers reach persistence through protocols, never via GRDB. See CQRS.md G5."
+    severity: error
+
+  cqrs_no_grdb_in_domain:
+    name: "Model, Events, and aggregate-root APIs must not import GRDB"
+    included: ".*/(Domains/[^/]+|Shared)/(Model|Events)/.*\\.swift$|.*/Domains/[^/]+/[^/]+\\.swift$"
+    regex: '(?m)^import[ \t]+GRDB[ \t]*$'
+    message: "Domain types and published read APIs are pure. See CQRS.md G5."
+    severity: error
+
+  cqrs_no_appkit_in_domains:
+    name: "Domains/Shared/Collaborators must not import AppKit/SwiftUI/UIKit"
+    included: ".*/(Domains|Shared|Collaborators)/.*\\.swift$"
+    regex: '(?m)^import[ \t]+(AppKit|SwiftUI|UIKit)[ \t]*$'
+    message: "UI frameworks belong in UI/. See CQRS.md G5."
+    severity: error
+
+  cqrs_command_immutable:
+    name: "Commands must use let"
+    included: ".*Command\\.swift$"
+    regex: '(?m)^[ \t]+var[ \t]+[a-zA-Z_][a-zA-Z0-9_]*[ \t]*[:=](?!.*\{[ \t]*get)'
+    message: "Commands are immutable. Use let for all stored properties. See CQRS.md G1."
+    severity: error
+
+  cqrs_query_immutable:
+    name: "Queries must use let"
+    included: ".*Query\\.swift$"
+    regex: '(?m)^[ \t]+var[ \t]+[a-zA-Z_][a-zA-Z0-9_]*[ \t]*[:=](?!.*\{[ \t]*get)'
+    message: "Queries are immutable. Use let for all stored properties. See CQRS.md G1."
+    severity: error
+
+  cqrs_event_immutable:
+    name: "Events must use let"
+    included: ".*/(Domains/[^/]+|Shared)/Events/.*\\.swift$"
+    regex: '(?m)^[ \t]+var[ \t]+[a-zA-Z_][a-zA-Z0-9_]*[ \t]*[:=](?!.*\{[ \t]*get)'
+    message: "Events are immutable. Use let for all stored properties. See CQRS.md G1."
+    severity: error
+
+  cqrs_readmodel_immutable:
+    name: "ReadModels must use let"
+    included: ".*/Domains/[^/]+/Read/.*\\.swift$"
+    excluded: ".*(Handler|Query)\\.swift$"
+    regex: '(?m)^[ \t]+var[ \t]+[a-zA-Z_][a-zA-Z0-9_]*[ \t]*[:=](?!.*\{[ \t]*get)'
+    message: "ReadModels are immutable. Use let for all stored properties. See CQRS.md G1."
+    severity: error
+
+  cqrs_no_date_in_handlers:
+    name: "Handlers must not call Date() directly"
+    included: ".*Handler\\.swift$"
+    regex: 'Date\(\)'
+    message: "Inject a Clock collaborator instead of calling Date() directly. See CQRS.md G8."
+    severity: error
+
+  cqrs_no_uuid_in_handlers:
+    name: "Handlers must not call UUID() directly"
+    included: ".*Handler\\.swift$"
+    regex: 'UUID\(\)'
+    message: "Inject an IDs collaborator instead of calling UUID() directly. See CQRS.md G8."
+    severity: error
+
+  cqrs_no_class_in_value_categories:
+    name: "Commands/Queries/Events/ReadModels must be structs"
+    included: ".*(Command|Query)\\.swift$|.*/(Domains/[^/]+|Shared)/Events/.*\\.swift$"
+    regex: '(?m)^[ \t]*(public[ \t]+|internal[ \t]+|private[ \t]+|fileprivate[ \t]+)?(final[ \t]+)?class[ \t]+'
+    message: "Value categories must be struct or enum. See CQRS.md G1."
+    severity: error
+
+  cqrs_event_inserts_only_in_store:
+    name: "Only EventStoreGRDB may INSERT into event tables"
+    excluded: ".*/EventStoreGRDB\\.swift$"
+    regex: 'INSERT[ \t]+INTO[ \t]+(entry_events|tag_events)'
+    message: "Event-table inserts live only in EventStoreGRDB.swift. See CQRS.md G6."
+    severity: error
+
+  cqrs_projection_inserts_only_in_projector:
+    name: "Only Projector may INSERT into projection tables"
+    excluded: ".*/Projector\\.swift$"
+    regex: 'INSERT[ \t]+INTO[ \t]+(entries|tags|entry_tags)'
+    message: "Projection-table inserts live only in Projector.swift. See CQRS.md G7."
+    severity: error

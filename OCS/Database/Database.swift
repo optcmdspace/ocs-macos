@@ -1,12 +1,7 @@
-//
-//  Database.swift
-//  OCS
-//
-
 import Foundation
 import GRDB
 
-final class Database: Sendable {
+nonisolated final class Database: Sendable {
     let queue: DatabaseQueue
 
     init() throws {

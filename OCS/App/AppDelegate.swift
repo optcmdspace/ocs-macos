@@ -1,24 +1,21 @@
-//
-//  AppDelegate.swift
-//  OCS
-//
-
 import AppKit
 import KeyboardShortcuts
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var composition: Composition?
     private var captureController: CapturePanelController?
-    private var database: Database?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let composition: Composition
         do {
-            database = try Database()
+            composition = try Composition()
         } catch {
-            fatalError("OCS: failed to open database — \(error)")
+            fatalError("OCS: bootstrap failed — \(error)")
         }
+        self.composition = composition
 
-        let controller = CapturePanelController()
+        let controller = CapturePanelController(dispatch: composition.dispatchCapture)
         captureController = controller
 
         KeyboardShortcuts.onKeyDown(for: .toggleCapture) { [weak controller] in
