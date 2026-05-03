@@ -11,6 +11,7 @@ nonisolated enum TerminalRow {
         let primary: String
         let secondary: String?
         let trailing: String?
+        let trailingMinWidth: CGFloat
         let style: Style
         let strikethrough: Bool
 
@@ -18,12 +19,14 @@ nonisolated enum TerminalRow {
             primary: String,
             secondary: String? = nil,
             trailing: String? = nil,
+            trailingMinWidth: CGFloat = 0,
             style: Style = .normal,
             strikethrough: Bool = false
         ) {
             self.primary = primary
             self.secondary = secondary
             self.trailing = trailing
+            self.trailingMinWidth = trailingMinWidth
             self.style = style
             self.strikethrough = strikethrough
         }
@@ -37,6 +40,7 @@ nonisolated enum TerminalRow {
                 primary: primary,
                 secondary: secondary,
                 trailing: trailing,
+                trailingMinWidth: trailingMinWidth,
                 style: newStyle,
                 strikethrough: strikethrough
             )
@@ -94,14 +98,19 @@ final class TerminalRowView: NSView {
             let trailing = NSTextField(labelWithString: trailingText)
             trailing.font = Applied.Capture.outputTimestampFont
             trailing.textColor = Applied.Capture.outputTimestampColor
+            trailing.alignment = .right
             trailing.translatesAutoresizingMaskIntoConstraints = false
             trailing.setContentHuggingPriority(.required, for: .horizontal)
             trailing.setContentCompressionResistancePriority(.required, for: .horizontal)
             addSubview(trailing)
+            let trailingInset = Applied.Capture.terminalMarkerWidth + Applied.Capture.terminalMarkerGap
             constraints.append(contentsOf: [
-                trailing.trailingAnchor.constraint(equalTo: trailingAnchor),
+                trailing.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -trailingInset),
                 trailing.firstBaselineAnchor.constraint(equalTo: primary.firstBaselineAnchor),
             ])
+            if spec.trailingMinWidth > 0 {
+                constraints.append(trailing.widthAnchor.constraint(greaterThanOrEqualToConstant: spec.trailingMinWidth))
+            }
             rightLimit = trailing.leadingAnchor
             rightInset = Applied.Capture.outputItemGap
         }

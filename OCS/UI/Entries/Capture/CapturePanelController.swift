@@ -211,7 +211,11 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
                     results.setRows([.message("no entries yet")])
                 }
             } else {
-                results.setRows(e.list.renderedRows(CaptureRows.entry))
+                let now = Date()
+                let minWidth = Applied.Capture.outputTimestampMinWidth
+                results.setRows(e.list.renderedRows {
+                    CaptureRows.entry($0, now: now, trailingMinWidth: minWidth)
+                })
             }
         }
         resultsTopConstraint.constant = Applied.Capture.outputTopGap
