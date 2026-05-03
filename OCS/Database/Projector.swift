@@ -7,6 +7,8 @@ nonisolated final class Projector: Sendable {
         switch event {
         case let e as EntryCaptured:
             try applyEntryCaptured(e, in: db)
+        case let e as EntryMoved:
+            try applyEntryMoved(e, in: db)
         default:
             preconditionFailure("Projector: unknown event \(type(of: event))")
         }
@@ -21,6 +23,17 @@ nonisolated final class Projector: Sendable {
                 event.text,
                 createdAt,
                 createdAt,
+            ]
+        )
+    }
+
+    private func applyEntryMoved(_ event: EntryMoved, in db: GRDB.Database) throws {
+        try db.execute(
+            sql: Queries.projectEntryMoved,
+            arguments: [
+                event.toBin.rawValue,
+                event.createdAt.unixMillis,
+                event.entryId.uuidString,
             ]
         )
     }

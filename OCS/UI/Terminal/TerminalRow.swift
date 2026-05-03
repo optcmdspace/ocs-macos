@@ -12,12 +12,20 @@ nonisolated enum TerminalRow {
         let secondary: String?
         let trailing: String?
         let style: Style
+        let strikethrough: Bool
 
-        nonisolated init(primary: String, secondary: String? = nil, trailing: String? = nil, style: Style = .normal) {
+        nonisolated init(
+            primary: String,
+            secondary: String? = nil,
+            trailing: String? = nil,
+            style: Style = .normal,
+            strikethrough: Bool = false
+        ) {
             self.primary = primary
             self.secondary = secondary
             self.trailing = trailing
             self.style = style
+            self.strikethrough = strikethrough
         }
 
         nonisolated static func message(_ text: String) -> Self {
@@ -25,7 +33,13 @@ nonisolated enum TerminalRow {
         }
 
         nonisolated func styled(_ newStyle: Style) -> Self {
-            .init(primary: primary, secondary: secondary, trailing: trailing, style: newStyle)
+            .init(
+                primary: primary,
+                secondary: secondary,
+                trailing: trailing,
+                style: newStyle,
+                strikethrough: strikethrough
+            )
         }
     }
 }
@@ -49,6 +63,17 @@ final class TerminalRowView: NSView {
         primary.lineBreakMode = .byTruncatingTail
         primary.maximumNumberOfLines = 1
         primary.translatesAutoresizingMaskIntoConstraints = false
+        if spec.strikethrough {
+            primary.attributedStringValue = NSAttributedString(
+                string: spec.primary,
+                attributes: [
+                    .font: Applied.Capture.outputFont,
+                    .foregroundColor: primaryColor(for: spec.style),
+                    .strikethroughStyle: NSUnderlineStyle.single.rawValue,
+                    .strikethroughColor: primaryColor(for: spec.style),
+                ]
+            )
+        }
 
         addSubview(marker)
         addSubview(primary)

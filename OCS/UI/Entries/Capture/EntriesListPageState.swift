@@ -2,14 +2,16 @@ import Foundation
 
 nonisolated struct EntriesListPageState: Sendable, Equatable {
     let list: TerminalListState<EntryListItem>
+    let scope: ListRecentEntriesQuery.Scope
     let nextCursor: ListRecentEntriesQuery.Cursor?
     let isLoadingMore: Bool
     let exhausted: Bool
     let hasError: Bool
 
-    static func empty(windowSize: Int) -> EntriesListPageState {
+    static func empty(windowSize: Int, scope: ListRecentEntriesQuery.Scope) -> EntriesListPageState {
         EntriesListPageState(
             list: TerminalListState(windowSize: windowSize),
+            scope: scope,
             nextCursor: nil,
             isLoadingMore: false,
             exhausted: false,
@@ -27,6 +29,7 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
     func startingLoad() -> EntriesListPageState {
         EntriesListPageState(
             list: list,
+            scope: scope,
             nextCursor: nextCursor,
             isLoadingMore: true,
             exhausted: exhausted,
@@ -45,6 +48,7 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
         }
         return EntriesListPageState(
             list: nextList,
+            scope: scope,
             nextCursor: newCursor,
             isLoadingMore: false,
             exhausted: more.isEmpty,
@@ -55,6 +59,7 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
     func failedLoad() -> EntriesListPageState {
         EntriesListPageState(
             list: list,
+            scope: scope,
             nextCursor: nextCursor,
             isLoadingMore: false,
             exhausted: exhausted,
@@ -67,9 +72,18 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
     func pageDown() -> EntriesListPageState { with(list: list.pageDown()) }
     func pageUp() -> EntriesListPageState { with(list: list.pageUp()) }
 
+    func replacingSelected(with item: EntryListItem) -> EntriesListPageState {
+        with(list: list.replacingSelected(with: item))
+    }
+
+    func removingSelected() -> EntriesListPageState {
+        with(list: list.removingSelected())
+    }
+
     private func with(list newList: TerminalListState<EntryListItem>) -> EntriesListPageState {
         EntriesListPageState(
             list: newList,
+            scope: scope,
             nextCursor: nextCursor,
             isLoadingMore: isLoadingMore,
             exhausted: exhausted,

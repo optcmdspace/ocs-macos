@@ -2,7 +2,9 @@ import Foundation
 
 nonisolated enum Queries {
     static let insertEntryEventCaptured = load("insert_entry_event_captured")
+    static let insertEntryEventMoved = load("insert_entry_event_moved")
     static let projectEntryCaptured = load("project_entry_captured")
+    static let projectEntryMoved = load("project_entry_moved")
 
     static let selectEntriesRecent = load("select_entries_recent")
     static let selectEntriesRecentBefore = load("select_entries_recent_before")

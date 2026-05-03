@@ -14,7 +14,8 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     private let fieldHeightConstraint: NSLayoutConstraint
     private let resultsTopConstraint: NSLayoutConstraint
     private let dispatchCapture: @Sendable (_ rawText: String) async throws -> UUID
-    private let dispatchListRecent: @Sendable (_ limit: Int, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem]
+    private let dispatchListRecent: @Sendable (_ limit: Int, _ scope: ListRecentEntriesQuery.Scope, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem]
+    private let dispatchMove: @Sendable (_ entryId: UUID, _ toBin: Bin) async throws -> Void
     // Bumped on submit and on every keystroke so an in-flight result never overwrites stale state.
     private var listGeneration: Int = 0
     private var page: PageMode = .idle
@@ -31,7 +32,8 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
 
     init(
         dispatchCapture: @escaping @Sendable (_ rawText: String) async throws -> UUID,
-        dispatchListRecent: @escaping @Sendable (_ limit: Int, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem]
+        dispatchListRecent: @escaping @Sendable (_ limit: Int, _ scope: ListRecentEntriesQuery.Scope, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem],
+        dispatchMove: @escaping @Sendable (_ entryId: UUID, _ toBin: Bin) async throws -> Void
     ) {
         let lineHeight = ceil(Applied.Capture.bodyFont.boundingRectForFont.height)
         let footerHeight = ceil(Applied.Capture.captionFont.boundingRectForFont.height)
@@ -107,6 +109,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         self.resultsTopConstraint = resultsTop
         self.dispatchCapture = dispatchCapture
         self.dispatchListRecent = dispatchListRecent
+        self.dispatchMove = dispatchMove
 
         super.init()
 
@@ -241,6 +244,10 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     }
 
     private func commit() {
+        if case .entries(let e) = page, let item = e.list.selected {
+            markDone(item: item, in: e)
+            return
+        }
         let raw: String
         if case .suggestions(let s) = page, let pick = s.selected {
             raw = pick.token
@@ -248,9 +255,9 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             raw = textField.stringValue
         }
         switch SlashCommand.parse(raw) {
-        case .list:
+        case .list(let scope):
             textField.stringValue = ""
-            beginEntriesLoad()
+            beginEntriesLoad(scope: scope)
         case .capture(let text):
             guard !text.isEmpty else {
                 dismiss()
@@ -269,10 +276,50 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         }
     }
 
-    private func beginEntriesLoad() {
+    private func markDone(item: EntryListItem, in state: EntriesListPageState) {
+        guard item.bin != .done else { return }
+        moveAndUpdate(item: item, to: .done, in: state)
+    }
+
+    private func handleBackspaceInEntries() -> Bool {
+        guard case .entries(let e) = page, let item = e.list.selected else {
+            return false
+        }
+        if item.bin == .done {
+            moveAndUpdate(item: item, to: .inbox, in: e)
+        } else {
+            trashSelected(item: item, in: e)
+        }
+        return true
+    }
+
+    private func moveAndUpdate(item: EntryListItem, to bin: Bin, in state: EntriesListPageState) {
+        let next = EntryListItem(id: item.id, text: item.text, bin: bin, createdAt: item.createdAt)
+        applyPage(.entries(state.replacingSelected(with: next)))
+        dispatchMoveDetached(entryId: item.id, toBin: bin)
+    }
+
+    private func trashSelected(item: EntryListItem, in state: EntriesListPageState) {
+        applyPage(.entries(state.removingSelected()))
+        updatePanelHeight()
+        dispatchMoveDetached(entryId: item.id, toBin: .trash)
+    }
+
+    private func dispatchMoveDetached(entryId: UUID, toBin: Bin) {
+        let dispatchMove = self.dispatchMove
+        Task.detached {
+            do {
+                try await dispatchMove(entryId, toBin)
+            } catch {
+                NSLog("OCS: move failed: %@", String(describing: error))
+            }
+        }
+    }
+
+    private func beginEntriesLoad(scope: ListRecentEntriesQuery.Scope) {
         listGeneration &+= 1
         let myGen = listGeneration
-        let initial = EntriesListPageState.empty(windowSize: windowSize).startingLoad()
+        let initial = EntriesListPageState.empty(windowSize: windowSize, scope: scope).startingLoad()
         applyPage(.entries(initial))
         updatePanelHeight()
 
@@ -280,7 +327,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         let pageSize = Self.pageSize
         Task { [weak self] in
             do {
-                let items = try await dispatchListRecent(pageSize, nil)
+                let items = try await dispatchListRecent(pageSize, scope, nil)
                 guard let self, self.listGeneration == myGen else { return }
                 if case .entries(let e) = self.page {
                     self.applyPage(.entries(e.appending(items)))
@@ -300,13 +347,14 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     private func loadMoreEntries(from state: EntriesListPageState) {
         guard let cursor = state.nextCursor else { return }
         let myGen = listGeneration
+        let scope = state.scope
         applyPage(.entries(state.startingLoad()))
 
         let dispatchListRecent = self.dispatchListRecent
         let pageSize = Self.pageSize
         Task { [weak self] in
             do {
-                let more = try await dispatchListRecent(pageSize, cursor)
+                let more = try await dispatchListRecent(pageSize, scope, cursor)
                 guard let self, self.listGeneration == myGen else { return }
                 if case .entries(let e) = self.page {
                     self.applyPage(.entries(e.appending(more)))
@@ -365,6 +413,8 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             return autocompleteSuggestion()
         case #selector(NSResponder.insertBacktab(_:)):
             return true
+        case #selector(NSResponder.deleteBackward(_:)):
+            return handleBackspaceInEntries()
         default:
             return false
         }

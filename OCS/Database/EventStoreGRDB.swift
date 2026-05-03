@@ -31,6 +31,8 @@ nonisolated final class EventStoreGRDB: EventStore {
         switch event {
         case let e as EntryCaptured:
             try insertEntryCaptured(e, in: db)
+        case let e as EntryMoved:
+            try insertEntryMoved(e, in: db)
         default:
             preconditionFailure("EventStoreGRDB: unknown event \(type(of: event))")
         }
@@ -43,6 +45,19 @@ nonisolated final class EventStoreGRDB: EventStore {
                 event.id.uuidString,
                 event.entryId.uuidString,
                 event.text,
+                event.deviceId.uuidString,
+                event.createdAt.unixMillis,
+            ]
+        )
+    }
+
+    private static func insertEntryMoved(_ event: EntryMoved, in db: GRDB.Database) throws {
+        try db.execute(
+            sql: Queries.insertEntryEventMoved,
+            arguments: [
+                event.id.uuidString,
+                event.entryId.uuidString,
+                event.toBin.rawValue,
                 event.deviceId.uuidString,
                 event.createdAt.unixMillis,
             ]

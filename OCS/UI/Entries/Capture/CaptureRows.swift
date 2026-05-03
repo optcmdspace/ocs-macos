@@ -6,7 +6,11 @@ nonisolated enum CaptureRows {
     }
 
     static func entry(_ item: EntryListItem) -> TerminalRow.Spec {
-        .init(primary: item.text, trailing: stampFormatter.string(from: item.createdAt))
+        .init(
+            primary: item.text,
+            trailing: stampFormatter.string(from: item.createdAt),
+            strikethrough: item.bin == .done
+        )
     }
 
     private static let stampFormatter: DateFormatter = {
