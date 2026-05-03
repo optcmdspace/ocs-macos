@@ -1,32 +1,28 @@
 import Foundation
 
-struct SlashSuggestionState: Equatable {
-    let items: [SlashCommand.Spec]
-    let selectedIndex: Int
+nonisolated struct SlashSuggestionState: Sendable, Equatable {
+    let list: TerminalListState<SlashCommand.Spec>
 
-    static let empty = SlashSuggestionState(items: [], selectedIndex: 0)
-
-    var isEmpty: Bool { items.isEmpty }
-
-    var selected: SlashCommand.Spec? {
-        guard selectedIndex >= 0, selectedIndex < items.count else { return nil }
-        return items[selectedIndex]
+    static func empty(windowSize: Int) -> SlashSuggestionState {
+        SlashSuggestionState(list: TerminalListState(windowSize: windowSize))
     }
+
+    var isEmpty: Bool { list.isEmpty }
+    var selected: SlashCommand.Spec? { list.selected }
 
     func applying(text: String) -> SlashSuggestionState {
         let next = SlashCommand.suggestions(for: text)
-        if next.isEmpty { return .empty }
-        let index = next == items ? min(selectedIndex, next.count - 1) : 0
-        return SlashSuggestionState(items: next, selectedIndex: index)
+        if next.isEmpty {
+            return SlashSuggestionState(list: TerminalListState(windowSize: list.windowSize))
+        }
+        if next == list.items {
+            return self
+        }
+        return SlashSuggestionState(list: TerminalListState(items: next, windowSize: list.windowSize))
     }
 
-    func movedDown() -> SlashSuggestionState {
-        guard !items.isEmpty else { return self }
-        return SlashSuggestionState(items: items, selectedIndex: min(selectedIndex + 1, items.count - 1))
-    }
-
-    func movedUp() -> SlashSuggestionState {
-        guard !items.isEmpty else { return self }
-        return SlashSuggestionState(items: items, selectedIndex: max(selectedIndex - 1, 0))
-    }
+    func cursorDown() -> Self { Self(list: list.cursorDown()) }
+    func cursorUp() -> Self { Self(list: list.cursorUp()) }
+    func pageDown() -> Self { Self(list: list.pageDown()) }
+    func pageUp() -> Self { Self(list: list.pageUp()) }
 }

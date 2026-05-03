@@ -8,13 +8,30 @@ nonisolated final class EntryReadsGRDB: ListRecentEntriesStore {
         self.database = database
     }
 
-    func recentEntries(limit: Int) async throws -> [EntryListItem] {
+    func recentEntries(
+        limit: Int,
+        before: ListRecentEntriesQuery.Cursor?
+    ) async throws -> [EntryListItem] {
         try await database.queue.read { db in
-            let rows = try Row.fetchAll(
-                db,
-                sql: Queries.selectEntriesRecent,
-                arguments: [limit]
-            )
+            let rows: [Row]
+            if let before {
+                rows = try Row.fetchAll(
+                    db,
+                    sql: Queries.selectEntriesRecentBefore,
+                    arguments: [
+                        before.createdAtMillis,
+                        before.createdAtMillis,
+                        before.id.uuidString,
+                        limit,
+                    ]
+                )
+            } else {
+                rows = try Row.fetchAll(
+                    db,
+                    sql: Queries.selectEntriesRecent,
+                    arguments: [limit]
+                )
+            }
             return rows.compactMap(Self.mapRow)
         }
     }

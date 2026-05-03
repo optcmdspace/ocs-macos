@@ -28,12 +28,14 @@ enum Applied {
         static let outputTimestampColor = Theme.Color.foregroundSubtle
         static let outputEmptyColor = Theme.Color.foregroundMuted
 
-        static let suggestionDescriptionColor = Theme.Color.foregroundMuted
-        static let suggestionSelectedBackground = Theme.Color.foregroundFaint
-        static let suggestionRowHorizontalPadding = Theme.Spacing.sm
-        static let suggestionRowVerticalPadding = Theme.Spacing.xs
-        static let suggestionCornerRadius = Theme.Radius.sm
-        static let suggestionTokenGap = Theme.Spacing.md
+        static let terminalMarker = "❯"
+        static let terminalMarkerColor = Theme.Color.accent
+        static let terminalSelectedColor = Theme.Color.accent
+        static let terminalMarkerGap = Theme.Spacing.sm
+        static var terminalMarkerWidth: CGFloat {
+            ceil((terminalMarker as NSString).size(withAttributes: [.font: outputFont]).width)
+        }
+        static let terminalDefaultWindowSize: Int = 8
 
         static let bodyFont = Theme.Font.xl
         static let captionFont = Theme.Font.sm

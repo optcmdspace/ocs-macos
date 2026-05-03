@@ -3,7 +3,7 @@ import Foundation
 // Dispatch surface is plain closures so UI does not depend on Collaborators or Handlers.
 nonisolated final class Composition: Sendable {
     let dispatchCapture: @Sendable (_ rawText: String) async throws -> UUID
-    let dispatchListRecent: @Sendable (_ limit: Int) async throws -> [EntryListItem]
+    let dispatchListRecent: @Sendable (_ limit: Int, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem]
 
     private let database: Database
     private let clock: any Clock
@@ -49,8 +49,8 @@ nonisolated final class Composition: Sendable {
             )
             return try await captureHandler.handle(cmd)
         }
-        self.dispatchListRecent = { [listRecentHandler] limit in
-            try await listRecentHandler.handle(ListRecentEntriesQuery(limit: limit))
+        self.dispatchListRecent = { [listRecentHandler] limit, before in
+            try await listRecentHandler.handle(ListRecentEntriesQuery(limit: limit, before: before))
         }
     }
 }

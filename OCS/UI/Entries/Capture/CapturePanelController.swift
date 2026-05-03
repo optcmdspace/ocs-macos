@@ -3,24 +3,35 @@ import Foundation
 
 @MainActor
 final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
-    private static let listLimit: Int = 10
+    private static let pageSize: Int = 20
+    private let windowSize: Int = Applied.Capture.terminalDefaultWindowSize
 
     private let panel: CapturePanel
     private let textField: CaptureField
     private let prompt: CapturePrompt
-    private let results: CaptureResultsView
+    private let results: TerminalView
     private let footerHeight: CGFloat
     private let fieldHeightConstraint: NSLayoutConstraint
     private let resultsTopConstraint: NSLayoutConstraint
     private let dispatchCapture: @Sendable (_ rawText: String) async throws -> UUID
-    private let dispatchListRecent: @Sendable (_ limit: Int) async throws -> [EntryListItem]
+    private let dispatchListRecent: @Sendable (_ limit: Int, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem]
     // Bumped on submit and on every keystroke so an in-flight result never overwrites stale state.
     private var listGeneration: Int = 0
-    private var suggestions: SlashSuggestionState = .empty
+    private var page: PageMode = .idle
+
+    private enum PageMode: Equatable {
+        case idle
+        case suggestions(SlashSuggestionState)
+        case entries(EntriesListPageState)
+    }
+
+    private enum NavDirection {
+        case down, up, pageDown, pageUp
+    }
 
     init(
         dispatchCapture: @escaping @Sendable (_ rawText: String) async throws -> UUID,
-        dispatchListRecent: @escaping @Sendable (_ limit: Int) async throws -> [EntryListItem]
+        dispatchListRecent: @escaping @Sendable (_ limit: Int, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem]
     ) {
         let lineHeight = ceil(Applied.Capture.bodyFont.boundingRectForFont.height)
         let footerHeight = ceil(Applied.Capture.captionFont.boundingRectForFont.height)
@@ -59,7 +70,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         let prompt = CapturePrompt()
         let field = CaptureField()
         let footer = CaptureFooter()
-        let results = CaptureResultsView()
+        let results = TerminalView()
 
         background.addSubview(tint)
         background.addSubview(prompt)
@@ -106,18 +117,12 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
 
     func controlTextDidChange(_ obj: Notification) {
         listGeneration &+= 1
-        applySuggestions(suggestions.applying(text: textField.stringValue))
+        let current: SlashSuggestionState = {
+            if case .suggestions(let s) = page { return s }
+            return .empty(windowSize: windowSize)
+        }()
+        applyPage(.suggestions(current.applying(text: textField.stringValue)))
         updatePanelHeight()
-    }
-
-    private func applySuggestions(_ next: SlashSuggestionState) {
-        suggestions = next
-        if next.isEmpty {
-            if results.isPopulated { clearResults() }
-            return
-        }
-        results.showSuggestions(next.items, selectedIndex: next.selectedIndex)
-        resultsTopConstraint.constant = Applied.Capture.outputTopGap
     }
 
     func windowDidResignKey(_ notification: Notification) {
@@ -126,7 +131,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
 
     func show() {
         textField.stringValue = ""
-        suggestions = .empty
+        page = .idle
         clearResults()
         listGeneration &+= 1
         resetPanelHeight()
@@ -134,6 +139,51 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(textField)
+    }
+
+    func dismiss() {
+        page = .idle
+        panel.orderOut(nil)
+    }
+
+    func toggle() {
+        if panel.isVisible {
+            dismiss()
+        } else {
+            show()
+        }
+    }
+
+    private func applyPage(_ next: PageMode) {
+        var normalized = next
+        if case .suggestions(let s) = next, s.isEmpty {
+            normalized = .idle
+        }
+        page = normalized
+        render()
+    }
+
+    private func render() {
+        switch page {
+        case .idle:
+            if results.isPopulated { clearResults() }
+            return
+        case .suggestions(let s):
+            results.setRows(s.list.renderedRows(CaptureRows.suggestion))
+        case .entries(let e):
+            if e.list.isEmpty {
+                if e.isLoadingMore {
+                    results.setRows([.message("loading...")])
+                } else if e.hasError {
+                    results.setRows([.message("could not load entries")])
+                } else {
+                    results.setRows([.message("no entries yet")])
+                }
+            } else {
+                results.setRows(e.list.renderedRows(CaptureRows.entry))
+            }
+        }
+        resultsTopConstraint.constant = Applied.Capture.outputTopGap
     }
 
     private func lineHeight() -> CGFloat {
@@ -190,25 +240,17 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         )
     }
 
-    func dismiss() {
-        panel.orderOut(nil)
-    }
-
-    func toggle() {
-        if panel.isVisible {
-            dismiss()
-        } else {
-            show()
-        }
-    }
-
     private func commit() {
-        let raw = suggestions.selected?.token ?? textField.stringValue
-        suggestions = .empty
+        let raw: String
+        if case .suggestions(let s) = page, let pick = s.selected {
+            raw = pick.token
+        } else {
+            raw = textField.stringValue
+        }
         switch SlashCommand.parse(raw) {
         case .list:
             textField.stringValue = ""
-            fetchAndShowList()
+            beginEntriesLoad()
         case .capture(let text):
             guard !text.isEmpty else {
                 dismiss()
@@ -227,26 +269,56 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         }
     }
 
-    private func fetchAndShowList() {
+    private func beginEntriesLoad() {
         listGeneration &+= 1
         let myGen = listGeneration
-        results.showLoading()
-        resultsTopConstraint.constant = Applied.Capture.outputTopGap
+        let initial = EntriesListPageState.empty(windowSize: windowSize).startingLoad()
+        applyPage(.entries(initial))
         updatePanelHeight()
 
         let dispatchListRecent = self.dispatchListRecent
-        let limit = Self.listLimit
+        let pageSize = Self.pageSize
         Task { [weak self] in
             do {
-                let items = try await dispatchListRecent(limit)
+                let items = try await dispatchListRecent(pageSize, nil)
                 guard let self, self.listGeneration == myGen else { return }
-                self.results.showItems(items)
-                self.updatePanelHeight()
+                if case .entries(let e) = self.page {
+                    self.applyPage(.entries(e.appending(items)))
+                    self.updatePanelHeight()
+                }
             } catch {
                 NSLog("OCS: list query failed: %@", String(describing: error))
                 guard let self, self.listGeneration == myGen else { return }
-                self.results.showError()
-                self.updatePanelHeight()
+                if case .entries(let e) = self.page {
+                    self.applyPage(.entries(e.failedLoad()))
+                    self.updatePanelHeight()
+                }
+            }
+        }
+    }
+
+    private func loadMoreEntries(from state: EntriesListPageState) {
+        guard let cursor = state.nextCursor else { return }
+        let myGen = listGeneration
+        applyPage(.entries(state.startingLoad()))
+
+        let dispatchListRecent = self.dispatchListRecent
+        let pageSize = Self.pageSize
+        Task { [weak self] in
+            do {
+                let more = try await dispatchListRecent(pageSize, cursor)
+                guard let self, self.listGeneration == myGen else { return }
+                if case .entries(let e) = self.page {
+                    self.applyPage(.entries(e.appending(more)))
+                    self.updatePanelHeight()
+                }
+            } catch {
+                NSLog("OCS: list page query failed: %@", String(describing: error))
+                guard let self, self.listGeneration == myGen else { return }
+                if case .entries(let e) = self.page {
+                    self.applyPage(.entries(e.failedLoad()))
+                    self.updatePanelHeight()
+                }
             }
         }
     }
@@ -280,24 +352,59 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             commit()
             return true
         case #selector(NSResponder.moveDown(_:)):
-            guard !suggestions.isEmpty else { return false }
-            applySuggestions(suggestions.movedDown())
-            return true
+            return navigate(.down)
         case #selector(NSResponder.moveUp(_:)):
-            guard !suggestions.isEmpty else { return false }
-            applySuggestions(suggestions.movedUp())
-            return true
+            return navigate(.up)
+        case #selector(NSResponder.scrollPageDown(_:)),
+             #selector(NSResponder.pageDown(_:)):
+            return navigate(.pageDown)
+        case #selector(NSResponder.scrollPageUp(_:)),
+             #selector(NSResponder.pageUp(_:)):
+            return navigate(.pageUp)
         case #selector(NSResponder.insertTab(_:)):
-            if let pick = suggestions.selected {
-                textField.stringValue = pick.token
-                applySuggestions(suggestions.applying(text: pick.token))
-                updatePanelHeight()
-            }
-            return true
+            return autocompleteSuggestion()
         case #selector(NSResponder.insertBacktab(_:)):
             return true
         default:
             return false
         }
+    }
+
+    private func navigate(_ direction: NavDirection) -> Bool {
+        switch page {
+        case .idle:
+            return false
+        case .suggestions(let s):
+            let next: SlashSuggestionState
+            switch direction {
+            case .down: next = s.cursorDown()
+            case .up: next = s.cursorUp()
+            case .pageDown: next = s.pageDown()
+            case .pageUp: next = s.pageUp()
+            }
+            applyPage(.suggestions(next))
+            return true
+        case .entries(let e):
+            guard !e.list.isEmpty else { return false }
+            let next: EntriesListPageState
+            switch direction {
+            case .down: next = e.cursorDown()
+            case .up: next = e.cursorUp()
+            case .pageDown: next = e.pageDown()
+            case .pageUp: next = e.pageUp()
+            }
+            applyPage(.entries(next))
+            updatePanelHeight()
+            if next.shouldLoadMore { loadMoreEntries(from: next) }
+            return true
+        }
+    }
+
+    private func autocompleteSuggestion() -> Bool {
+        guard case .suggestions(let s) = page, let pick = s.selected else { return true }
+        textField.stringValue = pick.token
+        applyPage(.suggestions(s.applying(text: pick.token)))
+        updatePanelHeight()
+        return true
     }
 }

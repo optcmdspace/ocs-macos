@@ -1,19 +1,19 @@
 import Foundation
 
-enum SlashCommand {
+nonisolated enum SlashCommand {
     case capture(String)
     case list
 
-    struct Spec: Sendable, Equatable {
+    nonisolated struct Spec: Sendable, Equatable {
         let token: String
         let description: String
     }
 
-    static let catalog: [Spec] = [
+    nonisolated static let catalog: [Spec] = [
         Spec(token: "/list", description: "show recent captures"),
     ]
 
-    static func suggestions(for raw: String) -> [Spec] {
+    nonisolated static func suggestions(for raw: String) -> [Spec] {
         let trimmed = raw.trimmingCharacters(in: .whitespaces)
         guard trimmed.hasPrefix("/"), !trimmed.contains(" ") else { return [] }
         let lower = trimmed.lowercased()
@@ -21,7 +21,7 @@ enum SlashCommand {
         return catalog.filter { $0.token.lowercased().hasPrefix(lower) }
     }
 
-    static func parse(_ raw: String) -> SlashCommand {
+    nonisolated static func parse(_ raw: String) -> SlashCommand {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         switch trimmed.lowercased() {
         case "/list":
