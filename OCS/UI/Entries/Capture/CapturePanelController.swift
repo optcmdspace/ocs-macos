@@ -10,6 +10,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     private let textField: CaptureField
     private let prompt: CapturePrompt
     private let results: TerminalView
+    private let footer: CaptureFooter
     private let footerHeight: CGFloat
     private let fieldHeightConstraint: NSLayoutConstraint
     private let resultsTopConstraint: NSLayoutConstraint
@@ -36,7 +37,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         dispatchMove: @escaping @Sendable (_ entryId: UUID, _ toBin: Bin) async throws -> Void
     ) {
         let lineHeight = ceil(Applied.Capture.bodyFont.boundingRectForFont.height)
-        let footerHeight = ceil(Applied.Capture.captionFont.boundingRectForFont.height)
+        let footerHeight = ceil(Applied.Capture.shortcutKeyFont.boundingRectForFont.height)
         let initialHeight = Applied.Capture.verticalPadding
             + lineHeight
             + Applied.Capture.footerGap
@@ -94,6 +95,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             results.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -Applied.Capture.horizontalPadding),
             resultsTop,
             footer.topAnchor.constraint(equalTo: results.bottomAnchor, constant: Applied.Capture.footerGap),
+            footer.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: Applied.Capture.horizontalPadding),
             footer.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -Applied.Capture.horizontalPadding),
             footer.bottomAnchor.constraint(equalTo: background.bottomAnchor, constant: -Applied.Capture.footerBottomInset),
         ])
@@ -104,6 +106,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         self.textField = field
         self.prompt = prompt
         self.results = results
+        self.footer = footer
         self.footerHeight = footerHeight
         self.fieldHeightConstraint = fieldHeight
         self.resultsTopConstraint = resultsTop
@@ -116,6 +119,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         field.delegate = self
         panel.delegate = self
         panel.onCancel = { [weak self] in self?.dismiss() }
+        refreshFooter()
     }
 
     func controlTextDidChange(_ obj: Notification) {
@@ -138,6 +142,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         clearResults()
         listGeneration &+= 1
         resetPanelHeight()
+        refreshFooter()
         position()
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
@@ -164,6 +169,29 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         }
         page = normalized
         render()
+        refreshFooter()
+    }
+
+    private func refreshFooter() {
+        let hints: [(key: String, label: String)]
+        switch page {
+        case .idle:
+            if textField.stringValue.isEmpty {
+                hints = [("↓", "for list")]
+            } else {
+                hints = [("⏎", "to submit"), ("⇧⏎", "to submit and continue")]
+            }
+        case .suggestions:
+            hints = [("↑↓", "to navigate"), ("⇥", "to complete"), ("⏎", "to run")]
+        case .entries(let e):
+            if e.list.isEmpty {
+                hints = [("↑", "to go back")]
+            } else {
+                let enterLabel = e.list.selected?.bin == .done ? "to undo done" : "to mark done"
+                hints = [("↑↓", "to navigate"), ("⏎", enterLabel), ("⌫", "to delete")]
+            }
+        }
+        footer.setHints(hints)
     }
 
     private func render() {
@@ -243,9 +271,9 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         )
     }
 
-    private func commit() {
+    private func commit(keepOpen: Bool = false) {
         if case .entries(let e) = page, let item = e.list.selected {
-            markDone(item: item, in: e)
+            toggleDone(item: item, in: e)
             return
         }
         let raw: String
@@ -260,7 +288,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             beginEntriesLoad(scope: scope)
         case .capture(let text):
             guard !text.isEmpty else {
-                dismiss()
+                if !keepOpen { dismiss() }
                 return
             }
             let dispatchCapture = self.dispatchCapture
@@ -272,24 +300,26 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
                 }
             }
             textField.stringValue = ""
-            dismiss()
+            if keepOpen {
+                listGeneration &+= 1
+                applyPage(.idle)
+                updatePanelHeight()
+            } else {
+                dismiss()
+            }
         }
     }
 
-    private func markDone(item: EntryListItem, in state: EntriesListPageState) {
-        guard item.bin != .done else { return }
-        moveAndUpdate(item: item, to: .done, in: state)
+    private func toggleDone(item: EntryListItem, in state: EntriesListPageState) {
+        let target: Bin = item.bin == .done ? .inbox : .done
+        moveAndUpdate(item: item, to: target, in: state)
     }
 
     private func handleBackspaceInEntries() -> Bool {
         guard case .entries(let e) = page, let item = e.list.selected else {
             return false
         }
-        if item.bin == .done {
-            moveAndUpdate(item: item, to: .inbox, in: e)
-        } else {
-            trashSelected(item: item, in: e)
-        }
+        trashSelected(item: item, in: e)
         return true
     }
 
@@ -397,7 +427,11 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             dismiss()
             return true
         case #selector(NSResponder.insertNewline(_:)):
-            commit()
+            let shift = NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false
+            commit(keepOpen: shift)
+            return true
+        case #selector(NSResponder.insertLineBreak(_:)):
+            commit(keepOpen: true)
             return true
         case #selector(NSResponder.moveDown(_:)):
             return navigate(.down)
@@ -423,6 +457,10 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     private func navigate(_ direction: NavDirection) -> Bool {
         switch page {
         case .idle:
+            if direction == .down && textField.stringValue.isEmpty {
+                beginEntriesLoad(scope: .active)
+                return true
+            }
             return false
         case .suggestions(let s):
             let next: SlashSuggestionState
@@ -435,6 +473,12 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             applyPage(.suggestions(next))
             return true
         case .entries(let e):
+            if direction == .up && (e.list.isEmpty || e.list.cursor == 0) {
+                listGeneration &+= 1
+                applyPage(.idle)
+                updatePanelHeight()
+                return true
+            }
             guard !e.list.isEmpty else { return false }
             let next: EntriesListPageState
             switch direction {

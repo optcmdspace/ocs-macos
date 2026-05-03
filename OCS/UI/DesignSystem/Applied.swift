@@ -28,6 +28,8 @@ enum Applied {
         static let outputTimestampColor = Theme.Color.foregroundSubtle
         static let outputEmptyColor = Theme.Color.foregroundMuted
 
+        static let shortcutSeparator = " · "
+        static let shortcutKeyKerning: CGFloat = 2
         static let terminalMarker = "❯"
         static let terminalMarkerColor = Theme.Color.accent
         static let terminalSelectedColor = Theme.Color.accent
@@ -39,6 +41,7 @@ enum Applied {
 
         static let bodyFont = Theme.Font.xl
         static let captionFont = Theme.Font.sm
+        static let shortcutKeyFont = Theme.Font.md
         static let outputFont = Theme.Font.md
         static let outputTimestampFont = Theme.Font.sm
     }
