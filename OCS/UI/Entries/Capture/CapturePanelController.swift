@@ -3,14 +3,25 @@ import Foundation
 
 @MainActor
 final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDelegate {
+    private static let listLimit: Int = 10
+
     private let panel: CapturePanel
     private let textField: CaptureField
     private let prompt: CapturePrompt
+    private let results: CaptureResultsView
     private let footerHeight: CGFloat
     private let fieldHeightConstraint: NSLayoutConstraint
-    private let dispatch: @Sendable (_ rawText: String) async throws -> UUID
+    private let resultsTopConstraint: NSLayoutConstraint
+    private let dispatchCapture: @Sendable (_ rawText: String) async throws -> UUID
+    private let dispatchListRecent: @Sendable (_ limit: Int) async throws -> [EntryListItem]
+    // Bumped on submit and on every keystroke so an in-flight result never overwrites stale state.
+    private var listGeneration: Int = 0
+    private var suggestions: SlashSuggestionState = .empty
 
-    init(dispatch: @escaping @Sendable (_ rawText: String) async throws -> UUID) {
+    init(
+        dispatchCapture: @escaping @Sendable (_ rawText: String) async throws -> UUID,
+        dispatchListRecent: @escaping @Sendable (_ limit: Int) async throws -> [EntryListItem]
+    ) {
         let lineHeight = ceil(Applied.Capture.bodyFont.boundingRectForFont.height)
         let footerHeight = ceil(Applied.Capture.captionFont.boundingRectForFont.height)
         let initialHeight = Applied.Capture.verticalPadding
@@ -48,13 +59,16 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         let prompt = CapturePrompt()
         let field = CaptureField()
         let footer = CaptureFooter()
+        let results = CaptureResultsView()
 
         background.addSubview(tint)
         background.addSubview(prompt)
         background.addSubview(field)
+        background.addSubview(results)
         background.addSubview(footer)
 
         let fieldHeight = field.heightAnchor.constraint(equalToConstant: lineHeight)
+        let resultsTop = results.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 0)
 
         NSLayoutConstraint.activate([
             prompt.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: Applied.Capture.horizontalPadding),
@@ -63,7 +77,10 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             field.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -Applied.Capture.horizontalPadding),
             field.topAnchor.constraint(equalTo: background.topAnchor, constant: Applied.Capture.verticalPadding),
             fieldHeight,
-            footer.topAnchor.constraint(equalTo: field.bottomAnchor, constant: Applied.Capture.footerGap),
+            results.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: Applied.Capture.horizontalPadding),
+            results.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -Applied.Capture.horizontalPadding),
+            resultsTop,
+            footer.topAnchor.constraint(equalTo: results.bottomAnchor, constant: Applied.Capture.footerGap),
             footer.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -Applied.Capture.horizontalPadding),
             footer.bottomAnchor.constraint(equalTo: background.bottomAnchor, constant: -Applied.Capture.footerBottomInset),
         ])
@@ -73,9 +90,12 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         self.panel = panel
         self.textField = field
         self.prompt = prompt
+        self.results = results
         self.footerHeight = footerHeight
         self.fieldHeightConstraint = fieldHeight
-        self.dispatch = dispatch
+        self.resultsTopConstraint = resultsTop
+        self.dispatchCapture = dispatchCapture
+        self.dispatchListRecent = dispatchListRecent
 
         super.init()
 
@@ -85,7 +105,19 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     }
 
     func controlTextDidChange(_ obj: Notification) {
+        listGeneration &+= 1
+        applySuggestions(suggestions.applying(text: textField.stringValue))
         updatePanelHeight()
+    }
+
+    private func applySuggestions(_ next: SlashSuggestionState) {
+        suggestions = next
+        if next.isEmpty {
+            if results.isPopulated { clearResults() }
+            return
+        }
+        results.showSuggestions(next.items, selectedIndex: next.selectedIndex)
+        resultsTopConstraint.constant = Applied.Capture.outputTopGap
     }
 
     func windowDidResignKey(_ notification: Notification) {
@@ -94,6 +126,9 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
 
     func show() {
         textField.stringValue = ""
+        suggestions = .empty
+        clearResults()
+        listGeneration &+= 1
         resetPanelHeight()
         position()
         NSApp.activate(ignoringOtherApps: true)
@@ -105,18 +140,28 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         ceil(Applied.Capture.bodyFont.boundingRectForFont.height)
     }
 
-    private func panelHeight(forFieldHeight fieldHeight: CGFloat) -> CGFloat {
-        Applied.Capture.verticalPadding
+    private func panelHeight(fieldHeight: CGFloat, outputHeight: CGFloat) -> CGFloat {
+        let outputContribution = outputHeight > 0
+            ? Applied.Capture.outputTopGap + outputHeight
+            : 0
+        return Applied.Capture.verticalPadding
             + fieldHeight
+            + outputContribution
             + Applied.Capture.footerGap
             + footerHeight
             + Applied.Capture.footerBottomInset
     }
 
+    private func currentOutputHeight() -> CGFloat {
+        guard results.isPopulated else { return 0 }
+        results.layoutSubtreeIfNeeded()
+        return ceil(results.fittingSize.height)
+    }
+
     private func resetPanelHeight() {
         let h = lineHeight()
         fieldHeightConstraint.constant = h
-        setPanelHeight(panelHeight(forFieldHeight: h))
+        setPanelHeight(panelHeight(fieldHeight: h, outputHeight: currentOutputHeight()))
     }
 
     private func updatePanelHeight() {
@@ -131,7 +176,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         )
         let fieldH = max(lineHeight(), ceil(bounding.height))
         fieldHeightConstraint.constant = fieldH
-        setPanelHeight(panelHeight(forFieldHeight: fieldH))
+        setPanelHeight(panelHeight(fieldHeight: fieldH, outputHeight: currentOutputHeight()))
     }
 
     private func setPanelHeight(_ newHeight: CGFloat) {
@@ -158,21 +203,57 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     }
 
     private func commit() {
-        let text = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else {
+        let raw = suggestions.selected?.token ?? textField.stringValue
+        suggestions = .empty
+        switch SlashCommand.parse(raw) {
+        case .list:
+            textField.stringValue = ""
+            fetchAndShowList()
+        case .capture(let text):
+            guard !text.isEmpty else {
+                dismiss()
+                return
+            }
+            let dispatchCapture = self.dispatchCapture
+            Task.detached {
+                do {
+                    _ = try await dispatchCapture(text)
+                } catch {
+                    NSLog("OCS: capture failed: %@", String(describing: error))
+                }
+            }
+            textField.stringValue = ""
             dismiss()
-            return
         }
-        let dispatch = self.dispatch
-        Task.detached {
+    }
+
+    private func fetchAndShowList() {
+        listGeneration &+= 1
+        let myGen = listGeneration
+        results.showLoading()
+        resultsTopConstraint.constant = Applied.Capture.outputTopGap
+        updatePanelHeight()
+
+        let dispatchListRecent = self.dispatchListRecent
+        let limit = Self.listLimit
+        Task { [weak self] in
             do {
-                _ = try await dispatch(text)
+                let items = try await dispatchListRecent(limit)
+                guard let self, self.listGeneration == myGen else { return }
+                self.results.showItems(items)
+                self.updatePanelHeight()
             } catch {
-                NSLog("OCS: capture failed: %@", String(describing: error))
+                NSLog("OCS: list query failed: %@", String(describing: error))
+                guard let self, self.listGeneration == myGen else { return }
+                self.results.showError()
+                self.updatePanelHeight()
             }
         }
-        textField.stringValue = ""
-        dismiss()
+    }
+
+    private func clearResults() {
+        results.clear()
+        resultsTopConstraint.constant = 0
     }
 
     private func position() {
@@ -198,8 +279,22 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         case #selector(NSResponder.insertNewline(_:)):
             commit()
             return true
-        case #selector(NSResponder.insertTab(_:)),
-             #selector(NSResponder.insertBacktab(_:)):
+        case #selector(NSResponder.moveDown(_:)):
+            guard !suggestions.isEmpty else { return false }
+            applySuggestions(suggestions.movedDown())
+            return true
+        case #selector(NSResponder.moveUp(_:)):
+            guard !suggestions.isEmpty else { return false }
+            applySuggestions(suggestions.movedUp())
+            return true
+        case #selector(NSResponder.insertTab(_:)):
+            if let pick = suggestions.selected {
+                textField.stringValue = pick.token
+                applySuggestions(suggestions.applying(text: pick.token))
+                updatePanelHeight()
+            }
+            return true
+        case #selector(NSResponder.insertBacktab(_:)):
             return true
         default:
             return false

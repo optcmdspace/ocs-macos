@@ -4,6 +4,8 @@ nonisolated enum Queries {
     static let insertEntryEventCaptured = load("insert_entry_event_captured")
     static let projectEntryCaptured = load("project_entry_captured")
 
+    static let selectEntriesRecent = load("select_entries_recent")
+
     static let selectDevice = load("select_device")
     static let insertDevice = load("insert_device")
     static let updateDeviceLastSeen = load("update_device_last_seen")

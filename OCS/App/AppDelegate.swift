@@ -15,7 +15,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         self.composition = composition
 
-        let controller = CapturePanelController(dispatch: composition.dispatchCapture)
+        let controller = CapturePanelController(
+            dispatchCapture: composition.dispatchCapture,
+            dispatchListRecent: composition.dispatchListRecent
+        )
         captureController = controller
 
         KeyboardShortcuts.onKeyDown(for: .toggleCapture) { [weak controller] in

@@ -12,6 +12,10 @@ enum Applied {
         static let cornerRadius = Theme.Radius.md
         static let borderWidth = Theme.Stroke.thin
 
+        static let outputTopGap = Theme.Spacing.md
+        static let outputRowSpacing = Theme.Spacing.sm
+        static let outputItemGap = Theme.Spacing.md
+
         static let cursorColor = Theme.Color.accent
         static let promptColor = Theme.Color.foregroundMuted
         static let textColor = Theme.Color.foreground
@@ -20,7 +24,20 @@ enum Applied {
         static let tintColor = Theme.Color.backgroundScrim
         static let borderColor = Theme.Color.foregroundFaint
 
+        static let outputTextColor = Theme.Color.foreground
+        static let outputTimestampColor = Theme.Color.foregroundSubtle
+        static let outputEmptyColor = Theme.Color.foregroundMuted
+
+        static let suggestionDescriptionColor = Theme.Color.foregroundMuted
+        static let suggestionSelectedBackground = Theme.Color.foregroundFaint
+        static let suggestionRowHorizontalPadding = Theme.Spacing.sm
+        static let suggestionRowVerticalPadding = Theme.Spacing.xs
+        static let suggestionCornerRadius = Theme.Radius.sm
+        static let suggestionTokenGap = Theme.Spacing.md
+
         static let bodyFont = Theme.Font.xl
         static let captionFont = Theme.Font.sm
+        static let outputFont = Theme.Font.md
+        static let outputTimestampFont = Theme.Font.sm
     }
 }
