@@ -7,6 +7,8 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
     let isLoadingMore: Bool
     let exhausted: Bool
     let hasError: Bool
+    // Stays false during the first ~100ms of a load so a fast query doesn't flicker the spinner.
+    let loadingVisible: Bool
 
     static func empty(windowSize: Int, scope: ListRecentEntriesQuery.Scope) -> EntriesListPageState {
         EntriesListPageState(
@@ -15,7 +17,8 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
             nextCursor: nil,
             isLoadingMore: false,
             exhausted: false,
-            hasError: false
+            hasError: false,
+            loadingVisible: false
         )
     }
 
@@ -33,7 +36,20 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
             nextCursor: nextCursor,
             isLoadingMore: true,
             exhausted: exhausted,
-            hasError: false
+            hasError: false,
+            loadingVisible: loadingVisible
+        )
+    }
+
+    func revealingLoad() -> EntriesListPageState {
+        EntriesListPageState(
+            list: list,
+            scope: scope,
+            nextCursor: nextCursor,
+            isLoadingMore: isLoadingMore,
+            exhausted: exhausted,
+            hasError: hasError,
+            loadingVisible: true
         )
     }
 
@@ -52,7 +68,8 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
             nextCursor: newCursor,
             isLoadingMore: false,
             exhausted: more.isEmpty,
-            hasError: false
+            hasError: false,
+            loadingVisible: false
         )
     }
 
@@ -63,7 +80,8 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
             nextCursor: nextCursor,
             isLoadingMore: false,
             exhausted: exhausted,
-            hasError: true
+            hasError: true,
+            loadingVisible: false
         )
     }
 
@@ -87,7 +105,8 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
             nextCursor: nextCursor,
             isLoadingMore: isLoadingMore,
             exhausted: exhausted,
-            hasError: hasError
+            hasError: hasError,
+            loadingVisible: loadingVisible
         )
     }
 }

@@ -16,10 +16,7 @@ final class TerminalView: NSStackView {
     var isPopulated: Bool { !arrangedSubviews.isEmpty }
 
     func setRows(_ specs: [TerminalRow.Spec]) {
-        for v in arrangedSubviews {
-            removeArrangedSubview(v)
-            v.removeFromSuperview()
-        }
+        clearArranged()
         for spec in specs {
             let row = TerminalRowView(spec: spec)
             addArrangedSubview(row)
@@ -27,5 +24,19 @@ final class TerminalView: NSStackView {
         }
     }
 
-    func clear() { setRows([]) }
+    func setLoading() {
+        clearArranged()
+        let row = TerminalLoadingRow()
+        addArrangedSubview(row)
+        row.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
+    }
+
+    func clear() { clearArranged() }
+
+    private func clearArranged() {
+        for v in arrangedSubviews {
+            removeArrangedSubview(v)
+            v.removeFromSuperview()
+        }
+    }
 }

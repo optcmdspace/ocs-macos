@@ -10,8 +10,26 @@ nonisolated enum CaptureRows {
             primary: item.text,
             trailing: relativeStamp(from: item.createdAt, now: now),
             trailingMinWidth: trailingMinWidth,
+            style: ageStyle(for: item.createdAt, now: now),
             strikethrough: item.bin == .done
         )
+    }
+
+    static func preview(_ item: EntryListItem, now: Date, trailingMinWidth: CGFloat) -> TerminalRow.Spec {
+        .init(
+            primary: item.text,
+            trailing: relativeStamp(from: item.createdAt, now: now),
+            trailingMinWidth: trailingMinWidth,
+            style: .muted,
+            strikethrough: item.bin == .done
+        )
+    }
+
+    static func ageStyle(for date: Date, now: Date) -> TerminalRow.Style {
+        let age = now.timeIntervalSince(date)
+        if age >= AgingThresholds.entryStaleAfterSeconds { return .faint }
+        if age >= AgingThresholds.entryAgedAfterSeconds { return .aged }
+        return .normal
     }
 
     static func relativeStamp(from date: Date, now: Date) -> String {

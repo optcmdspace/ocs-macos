@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import os
 
 // Append and projector apply must commit together; partial visibility would corrupt the read side.
 nonisolated final class EventStoreGRDB: EventStore {
@@ -12,6 +13,8 @@ nonisolated final class EventStoreGRDB: EventStore {
     }
 
     func append(_ events: [any DomainEvent]) async throws {
+        let interval = Signposts.signposter.beginInterval("store-append")
+        defer { Signposts.signposter.endInterval("store-append", interval) }
         let projector = self.projector
         do {
             try await database.queue.write { db in

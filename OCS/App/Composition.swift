@@ -2,9 +2,14 @@ import Foundation
 
 // Dispatch surface is plain closures so UI does not depend on Collaborators or Handlers.
 nonisolated final class Composition: Sendable {
-    let dispatchCapture: @Sendable (_ rawText: String) async throws -> UUID
+    let dispatchCapture: @Sendable (_ rawText: String) async throws -> EntryListItem
     let dispatchListRecent: @Sendable (_ limit: Int, _ scope: ListRecentEntriesQuery.Scope, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem]
     let dispatchMove: @Sendable (_ entryId: UUID, _ toBin: Bin) async throws -> Void
+    let dispatchEntryStats: @Sendable (_ todayStartMillis: Int64, _ yesterdayStartMillis: Int64, _ staleCutoffMillis: Int64) async throws -> EntryStats
+
+    #if DEBUG
+    let dispatchSeedCapture: @Sendable (_ text: String, _ at: Date) async -> Void
+    #endif
 
     private let database: Database
     private let clock: any Clock
@@ -16,6 +21,8 @@ nonisolated final class Composition: Sendable {
     private let moveHandler: MoveEntryHandler
     private let entryReads: EntryReadsGRDB
     private let listRecentHandler: ListRecentEntriesHandler
+    private let getEntryHandler: GetEntryHandler
+    private let getEntryStatsHandler: GetEntryStatsHandler
 
     init() throws {
         let database = try Database()
@@ -34,6 +41,8 @@ nonisolated final class Composition: Sendable {
         let moveHandler = MoveEntryHandler(eventStore: eventStore, ids: ids)
         let entryReads = EntryReadsGRDB(database: database)
         let listRecentHandler = ListRecentEntriesHandler(store: entryReads)
+        let getEntryHandler = GetEntryHandler(store: entryReads)
+        let getEntryStatsHandler = GetEntryStatsHandler(store: entryReads)
 
         self.database = database
         self.clock = clock
@@ -45,13 +54,16 @@ nonisolated final class Composition: Sendable {
         self.moveHandler = moveHandler
         self.entryReads = entryReads
         self.listRecentHandler = listRecentHandler
-        self.dispatchCapture = { [captureHandler, clock, deviceId] rawText in
+        self.getEntryHandler = getEntryHandler
+        self.getEntryStatsHandler = getEntryStatsHandler
+        self.dispatchCapture = { [captureHandler, getEntryHandler, clock, deviceId] rawText in
             let cmd = CaptureEntryCommand(
                 rawText: rawText,
                 deviceId: deviceId,
                 now: clock.now()
             )
-            return try await captureHandler.handle(cmd)
+            let entryId = try await captureHandler.handle(cmd)
+            return try await getEntryHandler.handle(GetEntryQuery(id: entryId))
         }
         self.dispatchListRecent = { [listRecentHandler] limit, scope, before in
             try await listRecentHandler.handle(ListRecentEntriesQuery(limit: limit, scope: scope, before: before))
@@ -65,5 +77,20 @@ nonisolated final class Composition: Sendable {
             )
             try await moveHandler.handle(cmd)
         }
+        self.dispatchEntryStats = { [getEntryStatsHandler] todayStartMillis, yesterdayStartMillis, staleCutoffMillis in
+            try await getEntryStatsHandler.handle(
+                GetEntryStatsQuery(
+                    todayStartMillis: todayStartMillis,
+                    yesterdayStartMillis: yesterdayStartMillis,
+                    staleCutoffMillis: staleCutoffMillis
+                )
+            )
+        }
+        #if DEBUG
+        self.dispatchSeedCapture = { [captureHandler, deviceId] text, at in
+            let cmd = CaptureEntryCommand(rawText: text, deviceId: deviceId, now: at)
+            _ = try? await captureHandler.handle(cmd)
+        }
+        #endif
     }
 }

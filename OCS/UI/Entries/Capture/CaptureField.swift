@@ -28,4 +28,15 @@ final class CaptureField: NSTextField {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let isReturn = event.keyCode == 36 || event.keyCode == 76
+        let onlyCommand = event.modifierFlags
+            .intersection(.deviceIndependentFlagsMask) == .command
+        if isReturn && onlyCommand {
+            currentEditor()?.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
 }

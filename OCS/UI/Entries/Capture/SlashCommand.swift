@@ -3,6 +3,7 @@ import Foundation
 nonisolated enum SlashCommand {
     case capture(String)
     case list(ListRecentEntriesQuery.Scope)
+    case sound(Bool)
 
     nonisolated struct Spec: Sendable, Equatable {
         let token: String
@@ -12,6 +13,8 @@ nonisolated enum SlashCommand {
     nonisolated static let catalog: [Spec] = [
         Spec(token: "/list", description: "show active captures"),
         Spec(token: "/list all", description: "show all captures, including done"),
+        Spec(token: "/sound on", description: "play a tick on save"),
+        Spec(token: "/sound off", description: "no sound on save"),
     ]
 
     nonisolated static func suggestions(for raw: String) -> [Spec] {
@@ -30,6 +33,10 @@ nonisolated enum SlashCommand {
             return .list(.active)
         case ["/list", "all"]:
             return .list(.all)
+        case ["/sound", "on"]:
+            return .sound(true)
+        case ["/sound", "off"]:
+            return .sound(false)
         default:
             return .capture(trimmed)
         }

@@ -2,11 +2,15 @@ import AppKit
 
 @MainActor
 final class BlockCursorTextView: NSTextView {
+    var cursorTint: NSColor = Applied.Capture.cursorColor {
+        didSet { setNeedsDisplay(bounds) }
+    }
+
     override func drawInsertionPoint(in rect: NSRect, color: NSColor, turnedOn flag: Bool) {
         guard flag else { return }
         var blockRect = rect
         blockRect.size.width = font?.maximumAdvancement.width ?? rect.size.width
-        Applied.Capture.cursorColor.setFill()
+        cursorTint.setFill()
         blockRect.fill()
     }
 

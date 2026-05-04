@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 nonisolated final class CaptureEntryHandler: Sendable {
     private let eventStore: any EventStore
@@ -10,6 +11,8 @@ nonisolated final class CaptureEntryHandler: Sendable {
     }
 
     func handle(_ cmd: CaptureEntryCommand) async throws -> UUID {
+        let interval = Signposts.signposter.beginInterval("handler-capture")
+        defer { Signposts.signposter.endInterval("handler-capture", interval) }
         guard let text = EntryText(cmd.rawText) else {
             throw CommandError.validationFailed("entry text empty after trimming")
         }

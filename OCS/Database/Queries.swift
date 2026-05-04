@@ -8,6 +8,8 @@ nonisolated enum Queries {
 
     static let selectEntriesRecent = load("select_entries_recent")
     static let selectEntriesRecentBefore = load("select_entries_recent_before")
+    static let selectEntryById = load("select_entry_by_id")
+    static let selectEntryStats = load("select_entry_stats")
 
     static let selectDevice = load("select_device")
     static let insertDevice = load("insert_device")

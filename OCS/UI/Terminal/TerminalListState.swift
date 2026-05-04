@@ -99,15 +99,19 @@ nonisolated struct TerminalListState<Item: Sendable & Equatable>: Sendable, Equa
 }
 
 extension TerminalListState {
+    func renderedItems(_ rowFor: (Item) -> TerminalRow.Spec) -> [TerminalRow.Spec] {
+        visibleRange.map { i in
+            let spec = rowFor(items[i])
+            return i == cursor ? spec.styled(.selected) : spec
+        }
+    }
+
     func renderedRows(_ rowFor: (Item) -> TerminalRow.Spec) -> [TerminalRow.Spec] {
         var specs: [TerminalRow.Spec] = []
         if hiddenAbove > 0 {
             specs.append(.message("↑ \(hiddenAbove) more"))
         }
-        for i in visibleRange {
-            let spec = rowFor(items[i])
-            specs.append(i == cursor ? spec.styled(.selected) : spec)
-        }
+        specs.append(contentsOf: renderedItems(rowFor))
         if hiddenBelow > 0 {
             specs.append(.message("↓ \(hiddenBelow) more"))
         }

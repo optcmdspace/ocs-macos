@@ -17,4 +17,8 @@ final class CapturePrompt: NSTextField {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    func setActive(_ active: Bool) {
+        textColor = active ? Applied.Capture.promptColor : Applied.Capture.promptColorMuted
+    }
 }

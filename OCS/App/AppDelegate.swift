@@ -1,5 +1,6 @@
 import AppKit
 import KeyboardShortcuts
+import os
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -15,15 +16,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         self.composition = composition
 
+        #if DEBUG
+        Task { await DevFixtures.seedIfNeeded(seed: composition.dispatchSeedCapture) }
+        #endif
+
         let controller = CapturePanelController(
             dispatchCapture: composition.dispatchCapture,
             dispatchListRecent: composition.dispatchListRecent,
-            dispatchMove: composition.dispatchMove
+            dispatchMove: composition.dispatchMove,
+            dispatchEntryStats: composition.dispatchEntryStats
         )
         captureController = controller
 
         KeyboardShortcuts.onKeyDown(for: .toggleCapture) { [weak controller] in
+            let interval = Signposts.signposter.beginInterval("hotkey-toggle")
             controller?.toggle()
+            Signposts.signposter.endInterval("hotkey-toggle", interval)
         }
     }
 

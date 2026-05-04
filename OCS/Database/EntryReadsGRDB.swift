@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-nonisolated final class EntryReadsGRDB: ListRecentEntriesStore {
+nonisolated final class EntryReadsGRDB: ListRecentEntriesStore, GetEntryStore, GetEntryStatsStore {
     private let database: Database
 
     init(database: Database) {
@@ -36,6 +36,48 @@ nonisolated final class EntryReadsGRDB: ListRecentEntriesStore {
                 )
             }
             return rows.compactMap(Self.mapRow)
+        }
+    }
+
+    func entry(id: UUID) async throws -> EntryListItem? {
+        try await database.queue.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: Queries.selectEntryById,
+                arguments: ["id": id.uuidString]
+            )
+            return row.flatMap(Self.mapRow)
+        }
+    }
+
+    func entryStats(
+        todayStartMillis: Int64,
+        yesterdayStartMillis: Int64,
+        staleCutoffMillis: Int64
+    ) async throws -> EntryStats {
+        try await database.queue.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: Queries.selectEntryStats,
+                arguments: [
+                    "todayStart": todayStartMillis,
+                    "yesterdayStart": yesterdayStartMillis,
+                    "staleCutoff": staleCutoffMillis,
+                ]
+            )
+            guard let row else {
+                return EntryStats(todayCount: 0, yesterdayCount: 0, activeCount: 0, staleActiveCount: 0)
+            }
+            let today: Int64 = row["today_count"] ?? 0
+            let yesterday: Int64 = row["yesterday_count"] ?? 0
+            let active: Int64 = row["active_count"] ?? 0
+            let staleActive: Int64 = row["stale_active_count"] ?? 0
+            return EntryStats(
+                todayCount: Int(today),
+                yesterdayCount: Int(yesterday),
+                activeCount: Int(active),
+                staleActiveCount: Int(staleActive)
+            )
         }
     }
 
