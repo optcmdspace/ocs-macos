@@ -70,7 +70,8 @@ final class CaptureFooter: NSView {
         self.hints.attributedStringValue = result
     }
 
-    func setStat(_ text: String) {
+    func setStat(_ text: String, accent: Bool = false) {
         stat.stringValue = text
+        stat.textColor = accent ? Applied.Capture.statAccentColor : Applied.Capture.statColor
     }
 }

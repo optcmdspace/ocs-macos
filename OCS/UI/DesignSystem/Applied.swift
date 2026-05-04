@@ -37,9 +37,12 @@ enum Applied {
         static let glanceColor = Theme.Color.foregroundMuted
         static let glanceFont = Theme.Font.sm
         static let glanceBottomGap = Theme.Spacing.sm
-        static let glanceVisibleSeconds: TimeInterval = 2.4
+        static let glanceVisibleSeconds: TimeInterval = 1
+
+        static let savedToastSeconds: TimeInterval = 1
 
         static let statColor = Theme.Color.foregroundSubtle
+        static let statAccentColor = Theme.Color.accent
         static let statFont = Theme.Font.sm
 
         static let loadingDotColor = Theme.Color.foreground

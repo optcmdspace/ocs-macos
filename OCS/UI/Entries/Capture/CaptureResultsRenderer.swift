@@ -12,15 +12,22 @@ enum CaptureResultsRenderer {
     static func view(
         for page: CapturePageMode,
         fieldText: String,
-        preview: EntryListItem?,
+        singlePreview: EntryListItem?,
+        sessionItems: [EntryListItem],
         previewLoading: Bool,
+        freshSavedId: UUID?,
         now: Date
     ) -> View {
         let trailingMinWidth = Applied.Capture.outputTimestampMinWidth
         switch page {
         case .idle:
-            if fieldText.isEmpty, let preview {
-                return .rows([CaptureRows.preview(preview, now: now, trailingMinWidth: trailingMinWidth)])
+            if !sessionItems.isEmpty {
+                return .rows(sessionItems.map {
+                    CaptureRows.preview($0, now: now, trailingMinWidth: trailingMinWidth, highlighted: $0.id == freshSavedId)
+                })
+            }
+            if let single = singlePreview {
+                return .rows([CaptureRows.preview(single, now: now, trailingMinWidth: trailingMinWidth)])
             }
             if fieldText.isEmpty, previewLoading {
                 return .loading
@@ -36,8 +43,15 @@ enum CaptureResultsRenderer {
                 if e.isLoadingMore {
                     if e.loadingVisible { return .loading }
                     // Bridge the spinner-suppression window so the panel doesn't blank into list mode.
-                    if let preview, e.scope == .active {
-                        return .rows([CaptureRows.preview(preview, now: now, trailingMinWidth: trailingMinWidth)])
+                    if e.scope == .active {
+                        if !sessionItems.isEmpty {
+                            return .rows(sessionItems.map {
+                                CaptureRows.preview($0, now: now, trailingMinWidth: trailingMinWidth, highlighted: $0.id == freshSavedId)
+                            })
+                        }
+                        if let single = singlePreview {
+                            return .rows([CaptureRows.preview(single, now: now, trailingMinWidth: trailingMinWidth)])
+                        }
                     }
                     // Hold the empty state for ~100ms so a fast query never flashes a spinner.
                     return .clear

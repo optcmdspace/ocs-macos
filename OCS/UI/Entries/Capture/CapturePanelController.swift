@@ -12,13 +12,22 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     private let preview: PreviewLoader
     private let stats: StatsLoader
     private let entries: EntriesLoader
+    private let history: CaptureHistoryCoordinator
     private let moveDispatcher: EntryMoveDispatcher
     private let dispatchCapture: @Sendable (_ rawText: String) async throws -> EntryListItem
 
+    private struct RecentSave {
+        let id: UUID
+        let bin: Bin
+    }
+
     private var page: CapturePageMode = .idle
-    private var latestPreview: EntryListItem?
+    private var singlePreview: EntryListItem?
+    private var sessionItems: [EntryListItem] = []
     private var previewLoading: Bool = false
     private var pendingGlance: Bool = false
+    private var savedToastTask: Task<Void, Never>?
+    private var recentSave: RecentSave?
 
     init(
         dispatchCapture: @escaping @Sendable (_ rawText: String) async throws -> EntryListItem,
@@ -36,11 +45,13 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             bottomGap: Applied.Capture.glanceBottomGap,
             visibleSeconds: Applied.Capture.glanceVisibleSeconds
         )
-        let preview = PreviewLoader(dispatch: dispatchListRecent)
-        self.preview = preview
+        self.preview = PreviewLoader(dispatch: dispatchListRecent)
         self.stats = StatsLoader(dispatch: dispatchEntryStats)
         self.entries = EntriesLoader(dispatch: dispatchListRecent, pageSize: Self.pageSize)
-        self.moveDispatcher = EntryMoveDispatcher(dispatch: dispatchMove, preview: preview)
+        self.history = CaptureHistoryCoordinator(
+            loader: EntriesLoader(dispatch: dispatchListRecent, pageSize: Self.pageSize)
+        )
+        self.moveDispatcher = EntryMoveDispatcher(dispatch: dispatchMove)
         self.dispatchCapture = dispatchCapture
 
         super.init()
@@ -53,9 +64,10 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     }
 
     func controlTextDidChange(_ obj: Notification) {
-        // Once the user starts typing the preview is moot and we want zero DB contention with the imminent capture.
+        // Cancel the baseline fetch so a capture write doesn't race with the read.
         preview.cancel()
         previewLoading = false
+        history.exitRecall(currentField: layout.field.stringValue)
         let current: SlashSuggestionState = {
             if case .suggestions(let s) = page { return s }
             return .empty(windowSize: windowSize)
@@ -72,14 +84,19 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         let interval = Signposts.signposter.beginInterval("panel-show")
         layout.field.stringValue = ""
         page = .idle
+        history.reset()
+        savedToastTask?.cancel()
+        savedToastTask = nil
+        recentSave = nil
+        sessionItems = []
         stats.reset()
         preview.cancel()
         entries.cancel()
         if let cached = preview.cached {
-            latestPreview = cached
+            singlePreview = cached
             previewLoading = false
         } else {
-            latestPreview = nil
+            singlePreview = nil
             previewLoading = true
         }
         glance.hideImmediate()
@@ -104,6 +121,12 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         preview.cancel()
         stats.cancel()
         entries.cancel()
+        history.cancel()
+        savedToastTask?.cancel()
+        savedToastTask = nil
+        recentSave = nil
+        sessionItems = []
+        singlePreview = nil
         previewLoading = false
         layout.panel.orderOut(nil)
     }
@@ -136,15 +159,21 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
 
     private func refreshFooter() {
         layout.footer.setHints(CaptureFooterHints.hints(for: page, fieldText: layout.field.stringValue))
-        layout.footer.setStat(CaptureFooterHints.stat(from: stats.stats))
+        if let bin = recentSave?.bin {
+            layout.footer.setStat("✓ saved to \(bin.rawValue)", accent: true)
+        } else {
+            layout.footer.setStat(CaptureFooterHints.stat(from: stats.stats))
+        }
     }
 
     private func render() {
         let view = CaptureResultsRenderer.view(
             for: page,
             fieldText: layout.field.stringValue,
-            preview: latestPreview,
+            singlePreview: singlePreview,
+            sessionItems: sessionItems,
             previewLoading: previewLoading,
+            freshSavedId: recentSave?.id,
             now: Date()
         )
         CaptureResultsRenderer.apply(view, to: layout)
@@ -191,7 +220,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
                 do {
                     let item = try await dispatchCapture(text)
                     await MainActor.run {
-                        self?.preview.adopt(item)
+                        self?.adoptCapturedItem(item)
                     }
                 } catch {
                     NSLog("OCS: capture failed: %@", String(describing: error))
@@ -199,10 +228,66 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             }
             if keepOpen {
                 layout.field.stringValue = ""
+                history.reset()
                 applyPage(.idle)
                 updatePanelHeight()
             } else {
                 dismiss()
+            }
+        }
+    }
+
+    private func stepHistoryBack() -> Bool {
+        if let next = history.stepBack(
+            currentField: layout.field.stringValue,
+            onLoaded: { [weak self] state in self?.applyHistory(state) }
+        ) {
+            applyHistory(next)
+        }
+        return true
+    }
+
+    private func stepHistoryForward() -> Bool {
+        if let next = history.stepForward() { applyHistory(next) }
+        return true
+    }
+
+    private func applyHistory(_ next: CaptureHistoryState) {
+        let text = next.displayText
+        layout.field.stringValue = text
+        if let editor = layout.field.currentEditor() {
+            let len = (text as NSString).length
+            editor.selectedRange = NSRange(location: len, length: 0)
+        }
+        render()
+        refreshFooter()
+        updatePanelHeight()
+    }
+
+    private func adoptCapturedItem(_ item: EntryListItem) {
+        preview.adopt(item)
+        previewLoading = false
+        var stack = sessionItems
+        stack.removeAll { $0.id == item.id }
+        stack.insert(item, at: 0)
+        if stack.count > windowSize { stack.removeLast(stack.count - windowSize) }
+        sessionItems = stack
+        guard layout.panel.isVisible else { return }
+        savedToastTask?.cancel()
+        recentSave = RecentSave(id: item.id, bin: item.bin)
+        refreshFooter()
+        render()
+        updatePanelHeight()
+        let visibleSeconds = Applied.Capture.savedToastSeconds
+        savedToastTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(visibleSeconds))
+            if Task.isCancelled { return }
+            await MainActor.run {
+                guard let self else { return }
+                self.savedToastTask = nil
+                self.recentSave = nil
+                self.refreshFooter()
+                self.render()
             }
         }
     }
@@ -223,13 +308,21 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     private func moveAndUpdate(item: EntryListItem, to bin: Bin, in state: EntriesListPageState) {
         let next = EntryListItem(id: item.id, text: item.text, bin: bin, createdAt: item.createdAt)
         applyPage(.entries(state.replacingSelected(with: next)))
+        if bin == .done || bin == .trash { dropFromPreview(id: item.id) }
         moveDispatcher.send(entryId: item.id, toBin: bin)
     }
 
     private func trashSelected(item: EntryListItem, in state: EntriesListPageState) {
         applyPage(.entries(state.removingSelected()))
+        dropFromPreview(id: item.id)
         updatePanelHeight()
         moveDispatcher.send(entryId: item.id, toBin: .trash)
+    }
+
+    private func dropFromPreview(id: UUID) {
+        sessionItems.removeAll { $0.id == id }
+        preview.invalidateIfMatches(id)
+        if singlePreview?.id == id { singlePreview = nil }
     }
 
     private func beginEntriesLoad(scope: ListRecentEntriesQuery.Scope) {
@@ -293,9 +386,9 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     private func kickoffPreviewLoad() {
         preview.fetch { [weak self] item in
             guard let self else { return }
-            self.latestPreview = item
+            self.singlePreview = item
             self.previewLoading = false
-            if case .idle = self.page, self.layout.field.stringValue.isEmpty {
+            if case .idle = self.page, self.sessionItems.isEmpty {
                 self.render()
                 self.updatePanelHeight()
             }
@@ -333,11 +426,21 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     private func navigate(_ direction: CaptureNavDirection) -> Bool {
         switch page {
         case .idle:
-            if direction == .down && layout.field.stringValue.isEmpty {
-                beginEntriesLoad(scope: .active)
-                return true
+            switch direction {
+            case .up:
+                return stepHistoryBack()
+            case .down:
+                if history.isActive {
+                    return stepHistoryForward()
+                }
+                if layout.field.stringValue.isEmpty {
+                    beginEntriesLoad(scope: .active)
+                    return true
+                }
+                return false
+            case .pageUp, .pageDown:
+                return false
             }
-            return false
         case .suggestions(let s):
             let next: SlashSuggestionState
             switch direction {

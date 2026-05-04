@@ -15,12 +15,12 @@ nonisolated enum CaptureRows {
         )
     }
 
-    static func preview(_ item: EntryListItem, now: Date, trailingMinWidth: CGFloat) -> TerminalRow.Spec {
+    static func preview(_ item: EntryListItem, now: Date, trailingMinWidth: CGFloat, highlighted: Bool = false) -> TerminalRow.Spec {
         .init(
             primary: item.text,
             trailing: relativeStamp(from: item.createdAt, now: now),
             trailingMinWidth: trailingMinWidth,
-            style: .muted,
+            style: highlighted ? .normal : .muted,
             strikethrough: item.bin == .done
         )
     }
