@@ -9,7 +9,7 @@ enum Applied {
         static let promptGap = Theme.Spacing.sm
         static let footerGap = Theme.Spacing.md
         static let footerBottomInset = Theme.Spacing.sm
-        static let cornerRadius = Theme.Radius.md
+        static let cornerRadius = Theme.Radius.xl
         static let borderWidth = Theme.Stroke.thin
 
         static let outputTopGap = Theme.Spacing.md

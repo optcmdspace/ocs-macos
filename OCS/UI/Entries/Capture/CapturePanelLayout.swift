@@ -40,6 +40,7 @@ struct CapturePanelLayout {
         background.state = .active
         background.wantsLayer = true
         background.layer?.cornerRadius = Applied.Capture.cornerRadius
+        background.layer?.cornerCurve = .continuous
         background.layer?.masksToBounds = true
         background.layer?.borderWidth = Applied.Capture.borderWidth
         background.layer?.borderColor = Applied.Capture.borderColor.cgColor

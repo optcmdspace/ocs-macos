@@ -84,7 +84,9 @@ final class GlanceController {
             ctx.duration = 0.25
             self.label.animator().alphaValue = 0.0
         }, completionHandler: { [weak self] in
-            self?.hideImmediate()
+            MainActor.assumeIsolated {
+                self?.hideImmediate()
+            }
         })
     }
 
