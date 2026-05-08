@@ -109,6 +109,7 @@ jobs:
             echo "export_dir=$BUILD_DIR/export"
             echo "app_path=$BUILD_DIR/export/$APP_NAME.app"
             echo "dmg_path=$BUILD_DIR/$APP_NAME-$VERSION.dmg"
+            echo "stable_dmg_path=$BUILD_DIR/$APP_NAME.dmg"
           } >> "$GITHUB_OUTPUT"
 
       - name: Write export options
@@ -190,18 +191,23 @@ jobs:
       - name: Staple DMG
         run: xcrun stapler staple "${{ steps.meta.outputs.dmg_path }}"
 
+      - name: Copy stable-name DMG
+        run: cp "${{ steps.meta.outputs.dmg_path }}" "${{ steps.meta.outputs.stable_dmg_path }}"
+
       - name: Verify signing and notarization
         run: |
           spctl --assess --verbose=4 --type execute "${{ steps.meta.outputs.app_path }}"
           spctl --assess --verbose=4 --type open --context context:primary-signature "${{ steps.meta.outputs.dmg_path }}"
           xcrun stapler validate "${{ steps.meta.outputs.app_path }}"
           xcrun stapler validate "${{ steps.meta.outputs.dmg_path }}"
+          xcrun stapler validate "${{ steps.meta.outputs.stable_dmg_path }}"
 
       - name: Summarize release
         run: |
           DMG="${{ steps.meta.outputs.dmg_path }}"
           SHA=$(shasum -a 256 "$DMG" | awk '{print $1}')
           NAME=$(basename "$DMG")
+          STABLE_NAME=$(basename "${{ steps.meta.outputs.stable_dmg_path }}")
           {
             echo "## Release ${{ steps.meta.outputs.version }}"
             echo ""
@@ -210,6 +216,7 @@ jobs:
             echo "| Marketing version | ${{ steps.meta.outputs.version }} |"
             echo "| Build number | ${{ github.run_number }} |"
             echo "| DMG | \`$NAME\` |"
+            echo "| Stable alias | \`$STABLE_NAME\` |"
             echo "| Size | $(du -h "$DMG" | awk '{print $1}') |"
             echo "| SHA-256 | \`$SHA\` |"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -227,8 +234,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
           DMG: ${{ steps.meta.outputs.dmg_path }}
+          STABLE_DMG: ${{ steps.meta.outputs.stable_dmg_path }}
         run: |
-          gh release create "$TAG" "$DMG" \
+          gh release create "$TAG" "$DMG" "$STABLE_DMG" \
             --title "$TAG" \
             --generate-notes \
             --verify-tag
