@@ -10,6 +10,8 @@ enum Theme {
         static let foregroundSubtle = NSColor(white: 1.0, alpha: 0.25)
         static let foregroundFaint = NSColor(white: 1.0, alpha: 0.10)
 
+        static let foregroundDimSolid = NSColor(white: 0.45, alpha: 1.0)
+
         static let backgroundScrim = NSColor(white: 0.0, alpha: 0.55)
     }
 

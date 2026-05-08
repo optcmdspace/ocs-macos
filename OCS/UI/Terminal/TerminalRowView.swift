@@ -64,7 +64,7 @@ final class TerminalRowView: NSView {
     }
 
     private static func makePrimary(spec: TerminalRow.Spec) -> NSTextField {
-        let color = primaryColor(for: spec.style)
+        let color = spec.strikethrough ? Applied.Capture.outputStrikethroughColor : primaryColor(for: spec.style)
         let primary = NSTextField(labelWithString: spec.primary)
         primary.font = Applied.Capture.outputFont
         primary.textColor = color

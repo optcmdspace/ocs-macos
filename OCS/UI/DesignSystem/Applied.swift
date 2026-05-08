@@ -32,6 +32,7 @@ enum Applied {
         static let outputFaintColor = Theme.Color.foregroundSubtle
         static let outputTimestampColor = Theme.Color.foregroundSubtle
         static let outputEmptyColor = Theme.Color.foregroundMuted
+        static let outputStrikethroughColor = Theme.Color.foregroundDimSolid
 
         static let glanceColor = Theme.Color.foregroundMuted
         static let glanceFont = Theme.Font.sm
