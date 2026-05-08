@@ -52,6 +52,9 @@ jobs:
             -scheme OCS \
             -configuration Debug \
             -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
             build \
             | xcbeautify --renderer github-actions --is-ci
 
