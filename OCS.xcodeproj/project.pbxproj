@@ -12,7 +12,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		5BE56CB42FA55AAD001AB404 /* OCS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OCS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5BE56CB42FA55AAD001AB404 /* OptCmdSpace.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OptCmdSpace.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5BE56CCE2FA55BF5001AB404 /* OCS.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = OCS.xcodeproj; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -61,7 +61,7 @@
 		5BE56CB52FA55AAD001AB404 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				5BE56CB42FA55AAD001AB404 /* OCS.app */,
+				5BE56CB42FA55AAD001AB404 /* OptCmdSpace.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -95,7 +95,7 @@
 				5BDD43272FA5F6D2003E37A1 /* GRDB */,
 			);
 			productName = OCS;
-			productReference = 5BE56CB42FA55AAD001AB404 /* OCS.app */;
+			productReference = 5BE56CB42FA55AAD001AB404 /* OptCmdSpace.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */

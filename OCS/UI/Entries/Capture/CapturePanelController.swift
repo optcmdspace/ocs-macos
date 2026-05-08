@@ -82,8 +82,10 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
 
     func show() {
         let interval = Signposts.signposter.beginInterval("panel-show")
-        layout.field.stringValue = ""
-        page = .idle
+        let draft = CaptureDraftStore.text
+        layout.field.stringValue = draft
+        let suggestion = SlashSuggestionState.empty(windowSize: windowSize).applying(text: draft)
+        page = suggestion.isEmpty ? .idle : .suggestions(suggestion)
         history.reset()
         savedToastTask?.cancel()
         savedToastTask = nil
@@ -104,18 +106,23 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         pendingGlance = glance.isFirstShowOfDay(at: now)
         refreshInputActive()
         render()
-        layout.resetPanelHeight(glanceVisible: glance.isVisible)
+        layout.updatePanelHeight(forText: draft, glanceVisible: glance.isVisible)
         refreshFooter()
         layout.position()
         NSApp.activate(ignoringOtherApps: true)
         layout.panel.makeKeyAndOrderFront(nil)
         layout.panel.makeFirstResponder(layout.field)
+        if !draft.isEmpty, let editor = layout.field.currentEditor() {
+            let len = (draft as NSString).length
+            editor.selectedRange = NSRange(location: len, length: 0)
+        }
         kickoffStatsLoad(now: now)
         if previewLoading { kickoffPreviewLoad() }
         Signposts.signposter.endInterval("panel-show", interval)
     }
 
     func dismiss() {
+        CaptureDraftStore.save(layout.field.stringValue)
         page = .idle
         glance.hideImmediate()
         preview.cancel()
@@ -226,8 +233,8 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
                     NSLog("OCS: capture failed: %@", String(describing: error))
                 }
             }
+            layout.field.stringValue = ""
             if keepOpen {
-                layout.field.stringValue = ""
                 history.reset()
                 applyPage(.idle)
                 updatePanelHeight()
