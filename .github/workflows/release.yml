@@ -1,0 +1,235 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build (e.g. v0.1.0).'
+        required: true
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build, sign, notarize, publish
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.4.app/Contents/Developer
+      SCHEME: OCS
+      CONFIGURATION: Release
+      APP_NAME: OptCmdSpace
+      NOTARY_PROFILE: ocs-notary
+      BUILD_DIR: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Verify Xcode
+        run: xcodebuild -version
+
+      - name: Create temporary keychain
+        env:
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/ocs-build.keychain-db"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          mapfile -t EXISTING < <(security list-keychains -d user | sed -E 's/^[[:space:]]*"?//; s/"?[[:space:]]*$//')
+          security list-keychains -d user -s "$KEYCHAIN_PATH" "${EXISTING[@]}"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Import Developer ID certificate
+        env:
+          DEV_ID_CERT_P12_BASE64: ${{ secrets.DEV_ID_CERT_P12_BASE64 }}
+          DEV_ID_CERT_PASSWORD: ${{ secrets.DEV_ID_CERT_PASSWORD }}
+        run: |
+          CERT_PATH="$RUNNER_TEMP/cert.p12"
+          echo "$DEV_ID_CERT_P12_BASE64" | base64 -d > "$CERT_PATH"
+          security import "$CERT_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$DEV_ID_CERT_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          rm "$CERT_PATH"
+
+      - name: Set key partition list
+        env:
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+      - name: Store notarytool credentials
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          xcrun notarytool store-credentials "$NOTARY_PROFILE" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --keychain "$KEYCHAIN_PATH"
+
+      - name: Resolve version and signing identity
+        id: meta
+        run: |
+          VERSION=$(xcodebuild -scheme "$SCHEME" -configuration "$CONFIGURATION" -showBuildSettings 2>/dev/null \
+            | awk '/[^_]MARKETING_VERSION =/ { print $3; exit }')
+          if [ -z "$VERSION" ]; then
+            echo "error: could not read MARKETING_VERSION" >&2
+            exit 1
+          fi
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | awk -F'"' '/Developer ID Application/ { print $2; exit }')
+          if [ -z "$IDENTITY" ]; then
+            echo "error: no Developer ID Application identity in keychain" >&2
+            exit 1
+          fi
+          {
+            echo "version=$VERSION"
+            echo "identity=$IDENTITY"
+            echo "archive_path=$BUILD_DIR/OCS.xcarchive"
+            echo "export_dir=$BUILD_DIR/export"
+            echo "app_path=$BUILD_DIR/export/$APP_NAME.app"
+            echo "dmg_path=$BUILD_DIR/$APP_NAME-$VERSION.dmg"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Write export options
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          mkdir -p "$BUILD_DIR"
+          cat > "$BUILD_DIR/exportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>developer-id</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>$APPLE_TEAM_ID</string>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Archive
+        run: |
+          xcodebuild \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIGURATION" \
+            -archivePath "${{ steps.meta.outputs.archive_path }}" \
+            -destination 'generic/platform=macOS' \
+            archive
+
+      - name: Export archive
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath "${{ steps.meta.outputs.archive_path }}" \
+            -exportOptionsPlist "$BUILD_DIR/exportOptions.plist" \
+            -exportPath "${{ steps.meta.outputs.export_dir }}"
+
+      - name: Notarize app
+        run: |
+          APP_ZIP="$BUILD_DIR/$APP_NAME.zip"
+          ditto -c -k --keepParent "${{ steps.meta.outputs.app_path }}" "$APP_ZIP"
+          xcrun notarytool submit "$APP_ZIP" \
+            --keychain "$KEYCHAIN_PATH" \
+            --keychain-profile "$NOTARY_PROFILE" \
+            --wait
+          rm "$APP_ZIP"
+
+      - name: Staple app
+        run: xcrun stapler staple "${{ steps.meta.outputs.app_path }}"
+
+      - name: Build DMG
+        run: |
+          DMG_STAGING="$BUILD_DIR/dmg-staging"
+          rm -rf "$DMG_STAGING"
+          mkdir -p "$DMG_STAGING"
+          cp -R "${{ steps.meta.outputs.app_path }}" "$DMG_STAGING/"
+          ln -s /Applications "$DMG_STAGING/Applications"
+          hdiutil create \
+            -volname "$APP_NAME" \
+            -srcfolder "$DMG_STAGING" \
+            -ov -format UDZO \
+            "${{ steps.meta.outputs.dmg_path }}"
+          rm -rf "$DMG_STAGING"
+
+      - name: Sign DMG
+        run: |
+          codesign --sign "${{ steps.meta.outputs.identity }}" --timestamp \
+            "${{ steps.meta.outputs.dmg_path }}"
+
+      - name: Notarize DMG
+        run: |
+          xcrun notarytool submit "${{ steps.meta.outputs.dmg_path }}" \
+            --keychain "$KEYCHAIN_PATH" \
+            --keychain-profile "$NOTARY_PROFILE" \
+            --wait
+
+      - name: Staple DMG
+        run: xcrun stapler staple "${{ steps.meta.outputs.dmg_path }}"
+
+      - name: Verify signing and notarization
+        run: |
+          spctl --assess --verbose=4 --type execute "${{ steps.meta.outputs.app_path }}"
+          spctl --assess --verbose=4 --type open --context context:primary-signature "${{ steps.meta.outputs.dmg_path }}"
+          xcrun stapler validate "${{ steps.meta.outputs.app_path }}"
+          xcrun stapler validate "${{ steps.meta.outputs.dmg_path }}"
+
+      - name: Summarize release
+        run: |
+          DMG="${{ steps.meta.outputs.dmg_path }}"
+          SHA=$(shasum -a 256 "$DMG" | awk '{print $1}')
+          NAME=$(basename "$DMG")
+          {
+            echo "## Release ${{ steps.meta.outputs.version }}"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| DMG | \`$NAME\` |"
+            echo "| Size | $(du -h "$DMG" | awk '{print $1}') |"
+            echo "| SHA-256 | \`$SHA\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ocs-dmg-${{ steps.meta.outputs.version }}
+          path: ${{ steps.meta.outputs.dmg_path }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          DMG: ${{ steps.meta.outputs.dmg_path }}
+        run: |
+          gh release create "$TAG" "$DMG" \
+            --title "$TAG" \
+            --generate-notes \
+            --verify-tag
+
+      - name: Clean up keychain
+        if: always()
+        run: |
+          if [ -n "${KEYCHAIN_PATH:-}" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" || true
+          fi
