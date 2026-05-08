@@ -40,7 +40,7 @@ final class CapturePanel: NSPanel {
     }
 
     func setCursorActive(_ active: Bool) {
-        blockCursorEditor.cursorTint = active ? Applied.Capture.cursorColor : Applied.Capture.cursorColorMuted
+        blockCursorEditor.setCursorActive(active)
     }
 
     override func cancelOperation(_ sender: Any?) {

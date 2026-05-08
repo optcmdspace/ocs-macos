@@ -4,11 +4,11 @@ enum Applied {
     @MainActor
     enum Capture {
         static let panelWidth: CGFloat = 640
-        static let horizontalPadding = Theme.Spacing.xl
-        static let verticalPadding = Theme.Spacing.lg
+        static let horizontalPadding = Theme.Spacing.xxl
+        static let verticalPadding = Theme.Spacing.xl
         static let promptGap = Theme.Spacing.sm
         static let footerGap = Theme.Spacing.md
-        static let footerBottomInset = Theme.Spacing.sm
+        static let footerBottomInset = Theme.Spacing.xl
         static let cornerRadius = Theme.Radius.xl
         static let borderWidth = Theme.Stroke.thin
 
@@ -19,7 +19,6 @@ enum Applied {
         static let dividerColor = Theme.Color.foregroundFaint
 
         static let cursorColor = Theme.Color.accent
-        static let cursorColorMuted = Theme.Color.foregroundMuted
         static let promptColor = Theme.Color.accent
         static let promptColorMuted = Theme.Color.foregroundMuted
         static let textColor = Theme.Color.foreground

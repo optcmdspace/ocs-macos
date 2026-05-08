@@ -350,7 +350,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
                 guard let self, case .entries(let e) = self.page else { return }
                 switch outcome {
                 case .loaded(let items):
-                    self.applyPage(.entries(e.appending(items)))
+                    self.applyPage(.entries(e.appending(items, requestedLimit: Self.pageSize)))
                 case .failed:
                     self.applyPage(.entries(e.failedLoad()))
                 }
@@ -366,7 +366,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             guard let self, case .entries(let e) = self.page else { return }
             switch outcome {
             case .loaded(let items):
-                self.applyPage(.entries(e.appending(items)))
+                self.applyPage(.entries(e.appending(items, requestedLimit: Self.pageSize)))
             case .failed:
                 self.applyPage(.entries(e.failedLoad()))
             }

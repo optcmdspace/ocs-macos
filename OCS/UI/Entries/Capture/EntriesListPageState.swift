@@ -53,7 +53,7 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
         )
     }
 
-    func appending(_ more: [EntryListItem]) -> EntriesListPageState {
+    func appending(_ more: [EntryListItem], requestedLimit: Int) -> EntriesListPageState {
         let nextList = list.appending(more)
         let lastSeen = more.last ?? list.items.last
         let newCursor: ListRecentEntriesQuery.Cursor? = lastSeen.map {
@@ -67,7 +67,7 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
             scope: scope,
             nextCursor: newCursor,
             isLoadingMore: false,
-            exhausted: more.isEmpty,
+            exhausted: more.count < requestedLimit,
             hasError: false,
             loadingVisible: false
         )
