@@ -1,0 +1,63 @@
+name: Bug report
+description: Something doesn't work the way it should.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched existing issues and didn't find a duplicate.
+          required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug. What did you expect, and what did you see instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Press ⌥⌘Space
+        2. Type ...
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where does it happen?
+      multiple: true
+      options:
+        - Capture panel (typing, submit)
+        - List view (Tab, navigation)
+        - Global hotkey
+        - Persistence (data on disk)
+        - Install or first launch
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: OCS version
+      description: From the DMG filename or the About window.
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: e.g. 15.2
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Optional. Console.app entries from the OCS process, or a screenshot of what you saw.
+      render: shell

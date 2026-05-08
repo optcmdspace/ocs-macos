@@ -1,0 +1,54 @@
+name: Feature request
+description: Suggest something OCS could do.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        OCS keeps a deliberately small surface. Most feature requests are declined, not because they're bad ideas, but because they grow the surface. Read the manifesto check at the bottom before filing.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched existing issues and didn't find a duplicate.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the friction or the missing capability. Be concrete about when it bites.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you change?
+      description: A rough sketch is fine. UI, hotkey, behavior, anything relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional. Other approaches you thought about and why you didn't pick them.
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: Manifesto check
+      description: OCS keeps a small, hotkey-only surface. Tick what applies.
+      options:
+        - label: This keeps the surface small.
+        - label: This doesn't add badges, streaks, or nags.
+        - label: This works offline.
+  - type: dropdown
+    id: contribution
+    attributes:
+      label: Would you be willing to send a PR for this?
+      options:
+        - I'd like to try
+        - Maybe, with guidance
+        - No, just suggesting
+    validations:
+      required: true
