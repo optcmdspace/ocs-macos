@@ -138,6 +138,7 @@ jobs:
             -configuration "$CONFIGURATION" \
             -archivePath "${{ steps.meta.outputs.archive_path }}" \
             -destination 'generic/platform=macOS' \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             archive
 
       - name: Export archive
@@ -206,6 +207,8 @@ jobs:
             echo ""
             echo "| Field | Value |"
             echo "| --- | --- |"
+            echo "| Marketing version | ${{ steps.meta.outputs.version }} |"
+            echo "| Build number | ${{ github.run_number }} |"
             echo "| DMG | \`$NAME\` |"
             echo "| Size | $(du -h "$DMG" | awk '{print $1}') |"
             echo "| SHA-256 | \`$SHA\` |"
