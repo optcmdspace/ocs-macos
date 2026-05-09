@@ -13,7 +13,10 @@ Free forever. No account. Local-first. Open source.
 ## install
 
 1. Download the latest signed DMG from the [Releases page](../../releases). No account, no sign-up.
-2. Free the hotkey: macOS binds ⌥⌘Space to "Show Finder search window" by default. Open System Settings → Keyboard → Keyboard Shortcuts → Spotlight, and uncheck **Show Finder search window**.
+2. Drag OCS to your Applications folder.
+3. Free the hotkey: macOS binds ⌥⌘Space to "Show Finder search window" by default. Open System Settings -> Keyboard -> Keyboard Shortcuts -> Spotlight, and uncheck **Show Finder search window**.
+4. Open OCS once. It runs as an accessory app (no Dock icon, no menu bar item), so it looks like nothing happened. The first launch arms the hotkey.
+5. OCS adds itself to Login Items on first launch so the hotkey survives reboots. To opt out, disable it in System Settings -> General -> Login Items.
 
 Requires macOS 14 (Sonoma) or later. Apple silicon and Intel.
 

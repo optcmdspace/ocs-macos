@@ -1,5 +1,6 @@
 import AppKit
 import KeyboardShortcuts
+import ServiceManagement
 import os
 
 @MainActor
@@ -33,9 +34,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             controller?.toggle()
             Signposts.signposter.endInterval("hotkey-toggle", interval)
         }
+
+        registerAsLoginItemIfNeeded()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    private func registerAsLoginItemIfNeeded() {
+        let key = "OCSHasRegisteredAsLoginItem"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        try? SMAppService.mainApp.register()
     }
 }
