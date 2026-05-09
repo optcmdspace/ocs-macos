@@ -305,7 +305,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = "0.0.0-dev";
 				PRODUCT_BUNDLE_IDENTIFIER = space.optcmd.OCS;
 				PRODUCT_NAME = OptCmdSpace;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -342,7 +342,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = "0.0.0-dev";
 				PRODUCT_BUNDLE_IDENTIFIER = space.optcmd.OCS;
 				PRODUCT_NAME = OptCmdSpace;
 				PROVISIONING_PROFILE_SPECIFIER = "";
