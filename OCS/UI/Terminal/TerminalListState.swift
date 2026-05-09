@@ -109,7 +109,7 @@ extension TerminalListState {
     func renderedItems(_ rowFor: (Item) -> TerminalRow.Spec) -> [TerminalRow.Spec] {
         visibleRange.map { i in
             let spec = rowFor(items[i])
-            return i == cursor ? spec.styled(.selected) : spec
+            return i == cursor ? spec.selectedStyle() : spec
         }
     }
 

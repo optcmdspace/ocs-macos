@@ -33,10 +33,11 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     private var rejectionToastTask: Task<Void, Never>?
     private var recentRejection: String?
     private var keyMonitor: Any?
+    private var liveFind: LiveFindCoordinator!
 
     init(
         dispatchCapture: @escaping @Sendable (_ rawText: String) async throws -> EntryListItem,
-        dispatchListRecent: @escaping @Sendable (_ limit: Int, _ scope: ListRecentEntriesQuery.Scope, _ tagFilter: TagName?, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem],
+        dispatchEntries: @escaping @Sendable (_ limit: Int, _ scope: ListRecentEntriesQuery.Scope, _ filter: EntriesFilter, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem],
         dispatchMove: @escaping @Sendable (_ entryId: UUID, _ toBin: Bin) async throws -> Void,
         dispatchEntryStats: @escaping @Sendable (_ todayStartMillis: Int64, _ yesterdayStartMillis: Int64, _ staleCutoffMillis: Int64) async throws -> EntryStats,
         dispatchTagSuggestions: @escaping DispatchTagSuggestions,
@@ -52,14 +53,14 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             bottomGap: Applied.Capture.glanceBottomGap,
             visibleSeconds: Applied.Capture.glanceVisibleSeconds
         )
-        let untagged: @Sendable (Int, ListRecentEntriesQuery.Scope, ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem] = { limit, scope, before in
-            try await dispatchListRecent(limit, scope, nil, before)
+        let unfiltered: @Sendable (Int, ListRecentEntriesQuery.Scope, ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem] = { limit, scope, before in
+            try await dispatchEntries(limit, scope, .none, before)
         }
-        self.preview = PreviewLoader(dispatch: untagged)
+        self.preview = PreviewLoader(dispatch: unfiltered)
         self.stats = StatsLoader(dispatch: dispatchEntryStats)
-        self.entries = EntriesLoader(dispatch: dispatchListRecent, pageSize: Self.pageSize)
+        self.entries = EntriesLoader(dispatch: dispatchEntries, pageSize: Self.pageSize)
         self.history = CaptureHistoryCoordinator(
-            loader: EntriesLoader(dispatch: dispatchListRecent, pageSize: Self.pageSize)
+            loader: EntriesLoader(dispatch: dispatchEntries, pageSize: Self.pageSize)
         )
         self.moveDispatcher = EntryMoveDispatcher(dispatch: dispatchMove)
         self.dispatchCapture = dispatchCapture
@@ -68,6 +69,15 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
 
         self.tagAutocomplete = TagAutocompleteCoordinator(
             dispatch: dispatchTagSuggestions,
+            windowSize: windowSize,
+            getPage: { [weak self] in self?.page ?? .idle },
+            setPage: { [weak self] in self?.applyPage($0) },
+            onHeightChange: { [weak self] in self?.updatePanelHeight() }
+        )
+
+        self.liveFind = LiveFindCoordinator(
+            dispatch: dispatchEntries,
+            pageSize: Self.pageSize,
             windowSize: windowSize,
             getPage: { [weak self] in self?.page ?? .idle },
             setPage: { [weak self] in self?.applyPage($0) },
@@ -102,11 +112,14 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         let raw = layout.field.stringValue
         let cursor = layout.field.currentEditor()?.selectedRange.location ?? (raw as NSString).length
         if !tagAutocomplete.handleFieldChange(raw: raw, cursor: cursor) {
-            let current: SlashSuggestionState = {
-                if case .suggestions(let s) = page { return s }
-                return .empty(windowSize: windowSize)
-            }()
-            applyPage(.suggestions(current.applying(text: raw)))
+            if !liveFind.handleFieldChange(raw: raw) {
+                liveFind.cancel()
+                let current: SlashSuggestionState = {
+                    if case .suggestions(let s) = page { return s }
+                    return .empty(windowSize: windowSize)
+                }()
+                applyPage(.suggestions(current.applying(text: raw)))
+            }
         }
         updatePanelHeight()
     }
@@ -169,6 +182,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         preview.cancel()
         stats.cancel()
         entries.cancel()
+        liveFind.cancel()
         tagAutocomplete.cancel()
         history.cancel()
         savedToastTask?.cancel()
@@ -207,9 +221,19 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
 
     private func refreshInputActive() {
         let active: Bool
+        // .entries (arrow-down list) takes the cursor over for navigation; .findResults keeps
+        // the field active so the user can keep refining the live query.
         if case .entries = page { active = false } else { active = true }
         layout.prompt.setActive(active)
         layout.panel.setCursorActive(active)
+        refreshCursorTint()
+    }
+
+    private func refreshCursorTint() {
+        let tint: NSColor = SlashCommand.leadingCommandRange(in: layout.field.stringValue) != nil
+            ? Applied.Capture.commandColor
+            : Applied.Capture.cursorColor
+        layout.panel.setCursorTint(tint)
     }
 
     private func refreshFooter() {
@@ -275,24 +299,48 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     }
 
     private func commit(keepOpen: Bool = false) {
+        // Inside /find, an Enter while a tag suggestion is highlighted accepts the suggestion;
+        // acceptTagSuggestion re-triggers the live find so the search runs against the resolved tag.
+        if case .tagSuggestions(let t) = page,
+           let pick = t.selected,
+           LiveFindCoordinator.isFindContext(layout.field.stringValue)
+        {
+            _ = acceptTagSuggestion(pick, in: t)
+            return
+        }
         if case .entries(let e) = page, let item = e.list.selected {
             toggleDone(item: item, in: e)
             return
         }
+        if case .findResults(let e) = page, let item = e.list.selected {
+            toggleFindDone(item: item, in: e)
+            return
+        }
         let raw: String
         if case .suggestions(let s) = page, let pick = s.selected {
+            // Intermediate picks (e.g. "/set") don't parse to a command; treat Enter as Tab so
+            // the user descends into the next suggestion level instead of saving the token literally.
+            if case .capture = SlashCommand.parse(pick.token) {
+                applyAutocomplete(token: pick.token)
+                return
+            }
             raw = pick.token
         } else {
             raw = layout.field.stringValue
         }
         switch SlashCommand.parse(raw) {
-        case .list(let scope):
-            layout.field.stringValue = ""
-            beginEntriesLoad(scope: scope, tagFilter: nil)
-        case .listByTag(let scope, let tagName):
-            layout.field.stringValue = ""
-            beginEntriesLoad(scope: scope, tagFilter: tagName)
-        case .sound(let on):
+        case .find:
+            // Either the user picked /find from the catalog or hit Enter on a bare /find. Move into
+            // live-find mode with whatever's in the field; the user can keep typing to refine.
+            let prefilled = raw.lowercased() == "/find" ? "/find " : raw
+            layout.field.stringValue = prefilled
+            if let editor = layout.field.currentEditor() {
+                let len = (prefilled as NSString).length
+                editor.selectedRange = NSRange(location: len, length: 0)
+            }
+            layout.field.refreshTokenHighlight()
+            liveFind.kickoff(raw: prefilled)
+        case .setSound(let on):
             CaptureSoundPreference.setEnabled(on)
             layout.field.stringValue = ""
             if keepOpen {
@@ -425,14 +473,14 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         if singlePreview?.id == id { singlePreview = nil }
     }
 
-    private func beginEntriesLoad(scope: ListRecentEntriesQuery.Scope, tagFilter: TagName?) {
-        let initial = EntriesListPageState.empty(windowSize: windowSize, scope: scope, tagFilter: tagFilter).startingLoad()
+    private func beginEntriesLoad(scope: ListRecentEntriesQuery.Scope, filter: EntriesFilter = .none) {
+        let initial = EntriesListPageState.empty(windowSize: windowSize, scope: scope, filter: filter).startingLoad()
         applyPage(.entries(initial))
         updatePanelHeight()
 
         entries.loadFirst(
             scope: scope,
-            tagFilter: tagFilter,
+            filter: filter,
             onSpinnerReveal: { [weak self] in
                 guard let self else { return }
                 if case .entries(let e) = self.page, e.isLoadingMore, e.list.isEmpty, !e.loadingVisible {
@@ -456,7 +504,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     private func loadMoreEntries(from state: EntriesListPageState) {
         guard let cursor = state.nextCursor else { return }
         applyPage(.entries(state.startingLoad()))
-        entries.loadMore(scope: state.scope, tagFilter: state.tagFilter, before: cursor) { [weak self] outcome in
+        entries.loadMore(scope: state.scope, filter: state.filter, before: cursor) { [weak self] outcome in
             guard let self, case .entries(let e) = self.page else { return }
             switch outcome {
             case .loaded(let items):
@@ -466,6 +514,14 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             }
             self.updatePanelHeight()
         }
+    }
+
+    private func toggleFindDone(item: EntryListItem, in state: EntriesListPageState) {
+        let target: Bin = item.bin == .done ? .inbox : .done
+        let next = EntryListItem(id: item.id, text: item.text, bin: target, createdAt: item.createdAt, tags: item.tags)
+        applyPage(.findResults(state.replacingSelected(with: next)))
+        if target == .done || target == .trash { dropFromPreview(id: item.id) }
+        moveDispatcher.send(entryId: item.id, toBin: target)
     }
 
     private func kickoffStatsLoad(now: Date) {
@@ -535,7 +591,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
                     return stepHistoryForward()
                 }
                 if layout.field.stringValue.isEmpty {
-                    beginEntriesLoad(scope: .active, tagFilter: nil)
+                    beginEntriesLoad(scope: .active)
                     return true
                 }
                 return false
@@ -572,6 +628,20 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             applyPage(.entries(next))
             updatePanelHeight()
             if next.shouldLoadMore { loadMoreEntries(from: next) }
+            return true
+        case .findResults(let e):
+            // The field stays active here, so ↑ at the top simply clamps; we don't exit the page.
+            guard !e.list.isEmpty else { return false }
+            let next: EntriesListPageState
+            switch direction {
+            case .down: next = e.cursorDown()
+            case .up: next = e.cursorUp()
+            case .pageDown: next = e.pageDown()
+            case .pageUp: next = e.pageUp()
+            }
+            applyPage(.findResults(next))
+            updatePanelHeight()
+            if next.shouldLoadMore { liveFind.loadMore(from: next) }
             return true
         }
     }
@@ -620,10 +690,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         switch page {
         case .suggestions(let s):
             guard let pick = s.selected else { return true }
-            layout.field.stringValue = pick.token
-            layout.field.refreshTokenHighlight()
-            applyPage(.suggestions(s.applying(text: pick.token)))
-            updatePanelHeight()
+            applyAutocomplete(token: pick.token)
             return true
         case .tagSuggestions(let t):
             guard let pick = t.selected else { return true }
@@ -631,6 +698,18 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         default:
             return true
         }
+    }
+
+    private func applyAutocomplete(token: String) {
+        layout.field.stringValue = token
+        if let editor = layout.field.currentEditor() {
+            let len = (token as NSString).length
+            editor.selectedRange = NSRange(location: len, length: 0)
+        }
+        layout.field.refreshTokenHighlight()
+        let next = SlashSuggestionState.empty(windowSize: windowSize).applying(text: token)
+        applyPage(.suggestions(next))
+        updatePanelHeight()
     }
 
     private func acceptTagSuggestion(_ pick: TagSuggestion, in state: TagSuggestionState) -> Bool {
@@ -641,6 +720,11 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         }
         layout.field.refreshTokenHighlight()
         updatePanelHeight()
+        // Programmatic stringValue changes don't fire controlTextDidChange, so re-trigger the
+        // live /find dispatch when the accepted tag landed inside a find query.
+        if LiveFindCoordinator.isFindContext(result.text) {
+            liveFind.kickoff(raw: result.text)
+        }
         return true
     }
 }

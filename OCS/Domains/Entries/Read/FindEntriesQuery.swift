@@ -1,18 +1,21 @@
 import Foundation
 
-nonisolated struct EntriesByTagQuery: Sendable {
-    let tagName: TagName
+nonisolated struct FindEntriesQuery: Sendable {
+    let text: String?
+    let tagNames: [TagName]
     let scope: ListRecentEntriesQuery.Scope
     let limit: Int
     let before: ListRecentEntriesQuery.Cursor?
 
     init(
-        tagName: TagName,
+        text: String?,
+        tagNames: [TagName],
         scope: ListRecentEntriesQuery.Scope,
         limit: Int,
         before: ListRecentEntriesQuery.Cursor? = nil
     ) {
-        self.tagName = tagName
+        self.text = text
+        self.tagNames = tagNames
         self.scope = scope
         self.limit = limit
         self.before = before

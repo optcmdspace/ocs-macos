@@ -42,6 +42,9 @@ final class CaptureField: NSTextField {
             ],
             range: full
         )
+        if let range = SlashCommand.leadingCommandRange(in: stringValue) {
+            storage.addAttribute(.foregroundColor, value: Applied.Capture.commandColor, range: range)
+        }
         for range in HashtagSyntax.tokenRanges(in: stringValue) {
             storage.addAttribute(.foregroundColor, value: Applied.Capture.inputTagColor, range: range)
         }

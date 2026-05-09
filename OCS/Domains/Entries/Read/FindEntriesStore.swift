@@ -1,8 +1,9 @@
 import Foundation
 
-protocol EntriesByTagStore: Sendable {
-    nonisolated func entries(
-        tagName: String,
+protocol FindEntriesStore: Sendable {
+    nonisolated func find(
+        text: String?,
+        tagNames: [String],
         scope: ListRecentEntriesQuery.Scope,
         limit: Int,
         before: ListRecentEntriesQuery.Cursor?

@@ -24,6 +24,10 @@ enum Applied {
         static let promptColorMuted = Theme.Color.foregroundMuted
         static let textColor = Theme.Color.foreground
         static let inputTagColor = Theme.Color.accent
+        static let commandColor = Theme.Color.command
+        static let commandColorMuted = Theme.Color.commandMuted
+        static let matchHighlightForeground = Theme.Color.accent
+        static let matchHighlightBackground = Theme.Color.accentDim
         static let placeholderColor = Theme.Color.foregroundSubtle
         static let footerTextColor = Theme.Color.foregroundSubtle
         static let tintColor = Theme.Color.backgroundScrim

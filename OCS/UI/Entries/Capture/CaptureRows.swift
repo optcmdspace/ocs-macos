@@ -3,7 +3,7 @@ import AppKit
 @MainActor
 enum CaptureRows {
     static func suggestion(_ spec: SlashCommand.Spec) -> TerminalRow.Spec {
-        .init(primary: spec.token, secondary: spec.description)
+        .init(primary: spec.display, secondary: spec.description, style: .command)
     }
 
     static func tagSuggestion(_ s: TagSuggestion, trailingMinWidth: CGFloat) -> TerminalRow.Spec {
@@ -14,14 +14,15 @@ enum CaptureRows {
         )
     }
 
-    static func entry(_ item: EntryListItem, now: Date, trailingMinWidth: CGFloat) -> TerminalRow.Spec {
+    static func entry(_ item: EntryListItem, now: Date, trailingMinWidth: CGFloat, highlight: String? = nil) -> TerminalRow.Spec {
         .init(
             primary: item.text,
             tags: item.tags.isEmpty ? nil : item.tags,
             trailing: relativeStamp(from: item.createdAt, now: now),
             trailingMinWidth: trailingMinWidth,
             style: ageStyle(for: item.createdAt, now: now),
-            strikethrough: item.bin == .done
+            strikethrough: item.bin == .done,
+            highlight: highlight
         )
     }
 

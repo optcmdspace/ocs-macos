@@ -3,7 +3,7 @@ import Foundation
 // Dispatch surface is plain closures so UI does not depend on Collaborators or Handlers.
 nonisolated final class Composition: Sendable {
     let dispatchCapture: @Sendable (_ rawText: String) async throws -> EntryListItem
-    let dispatchListRecent: @Sendable (_ limit: Int, _ scope: ListRecentEntriesQuery.Scope, _ tagFilter: TagName?, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem]
+    let dispatchEntries: @Sendable (_ limit: Int, _ scope: ListRecentEntriesQuery.Scope, _ filter: EntriesFilter, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem]
     let dispatchMove: @Sendable (_ entryId: UUID, _ toBin: Bin) async throws -> Void
     let dispatchEntryStats: @Sendable (_ todayStartMillis: Int64, _ yesterdayStartMillis: Int64, _ staleCutoffMillis: Int64) async throws -> EntryStats
     let dispatchTagSuggestions: DispatchTagSuggestions
@@ -27,7 +27,7 @@ nonisolated final class Composition: Sendable {
     private let setEntryTagsHandler: SetEntryTagsHandler
     private let entryReads: EntryReadsGRDB
     private let listRecentHandler: ListRecentEntriesHandler
-    private let entriesByTagHandler: EntriesByTagHandler
+    private let findEntriesHandler: FindEntriesHandler
     private let getEntryHandler: GetEntryHandler
     private let getEntryStatsHandler: GetEntryStatsHandler
 
@@ -60,7 +60,7 @@ nonisolated final class Composition: Sendable {
         )
         let entryReads = EntryReadsGRDB(database: database)
         let listRecentHandler = ListRecentEntriesHandler(store: entryReads)
-        let entriesByTagHandler = EntriesByTagHandler(store: entryReads)
+        let findEntriesHandler = FindEntriesHandler(store: entryReads)
         let getEntryHandler = GetEntryHandler(store: entryReads)
         let getEntryStatsHandler = GetEntryStatsHandler(store: entryReads)
 
@@ -78,7 +78,7 @@ nonisolated final class Composition: Sendable {
         self.setEntryTagsHandler = setEntryTagsHandler
         self.entryReads = entryReads
         self.listRecentHandler = listRecentHandler
-        self.entriesByTagHandler = entriesByTagHandler
+        self.findEntriesHandler = findEntriesHandler
         self.getEntryHandler = getEntryHandler
         self.getEntryStatsHandler = getEntryStatsHandler
         self.dispatchCapture = { [captureHandler, getEntryHandler, clock, deviceId] rawText in
@@ -90,15 +90,24 @@ nonisolated final class Composition: Sendable {
             let entryId = try await captureHandler.handle(cmd)
             return try await getEntryHandler.handle(GetEntryQuery(id: entryId))
         }
-        self.dispatchListRecent = { [listRecentHandler, entriesByTagHandler] limit, scope, tagFilter, before in
-            if let tag = tagFilter {
-                return try await entriesByTagHandler.handle(
-                    EntriesByTagQuery(tagName: tag, scope: scope, limit: limit, before: before)
+        self.dispatchEntries = { [listRecentHandler, findEntriesHandler] limit, scope, filter, before in
+            switch filter {
+            case .none:
+                return try await listRecentHandler.handle(
+                    ListRecentEntriesQuery(limit: limit, scope: scope, before: before)
+                )
+            case .find(let text, let tags):
+                // An empty /find filter (no text and no tags) is just a recent-entries listing —
+                // route it through the same handler as .none so the two paths can't drift.
+                if (text?.isEmpty ?? true) && tags.isEmpty {
+                    return try await listRecentHandler.handle(
+                        ListRecentEntriesQuery(limit: limit, scope: scope, before: before)
+                    )
+                }
+                return try await findEntriesHandler.handle(
+                    FindEntriesQuery(text: text, tagNames: tags, scope: scope, limit: limit, before: before)
                 )
             }
-            return try await listRecentHandler.handle(
-                ListRecentEntriesQuery(limit: limit, scope: scope, before: before)
-            )
         }
         self.dispatchMove = { [moveHandler, clock, deviceId] entryId, toBin in
             let cmd = MoveEntryCommand(

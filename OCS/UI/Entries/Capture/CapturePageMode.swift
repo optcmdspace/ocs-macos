@@ -6,4 +6,5 @@ enum CapturePageMode: Equatable {
     case suggestions(SlashSuggestionState)
     case tagSuggestions(TagSuggestionState)
     case entries(EntriesListPageState)
+    case findResults(EntriesListPageState)
 }

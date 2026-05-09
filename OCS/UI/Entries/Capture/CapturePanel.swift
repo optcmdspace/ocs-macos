@@ -43,6 +43,10 @@ final class CapturePanel: NSPanel {
         blockCursorEditor.setCursorActive(active)
     }
 
+    func setCursorTint(_ color: NSColor) {
+        blockCursorEditor.cursorTint = color
+    }
+
     override func cancelOperation(_ sender: Any?) {
         onCancel?()
     }

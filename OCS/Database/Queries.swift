@@ -19,8 +19,8 @@ nonisolated enum Queries {
 
     static let selectEntriesRecent = load("select_entries_recent")
     static let selectEntriesRecentBefore = load("select_entries_recent_before")
-    static let selectEntriesByTag = load("select_entries_by_tag")
-    static let selectEntriesByTagBefore = load("select_entries_by_tag_before")
+    static let selectEntriesFind = load("select_entries_find")
+    static let selectEntriesFindBefore = load("select_entries_find_before")
     static let selectEntryById = load("select_entry_by_id")
     static let selectEntryStats = load("select_entry_stats")
     static let selectTagActiveByName = load("select_tag_active_by_name")

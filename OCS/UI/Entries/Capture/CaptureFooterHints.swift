@@ -21,6 +21,12 @@ enum CaptureFooterHints {
             }
             let enterLabel = e.list.selected?.bin == .done ? "to undo done" : "to mark done"
             return [("↑↓", "to navigate"), ("⏎", enterLabel), ("⌫", "to delete"), ("t", "to tag")]
+        case .findResults(let e):
+            if e.list.isEmpty {
+                return [("type", "to refine"), ("⌫", "to edit")]
+            }
+            let enterLabel = e.list.selected?.bin == .done ? "to undo done" : "to mark done"
+            return [("↑↓", "to navigate"), ("⏎", enterLabel)]
         }
     }
 

@@ -7,7 +7,7 @@ final class TerminalRowView: NSView {
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
 
-        let marker = Self.makeMarker(visible: spec.style == .selected)
+        let marker = Self.makeMarker(style: spec.style)
         let primary = Self.makePrimary(spec: spec)
         addSubview(marker)
         addSubview(primary)
@@ -65,10 +65,13 @@ final class TerminalRowView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    private static func makeMarker(visible: Bool) -> NSTextField {
+    private static func makeMarker(style: TerminalRow.Style) -> NSTextField {
+        let visible = style == .selected || style == .commandSelected
         let marker = NSTextField(labelWithString: visible ? Applied.Capture.terminalMarker : "")
         marker.font = Applied.Capture.outputFont
-        marker.textColor = Applied.Capture.terminalMarkerColor
+        marker.textColor = style == .commandSelected
+            ? Applied.Capture.commandColor
+            : Applied.Capture.terminalMarkerColor
         marker.alignment = .left
         marker.translatesAutoresizingMaskIntoConstraints = false
         return marker
@@ -82,18 +85,36 @@ final class TerminalRowView: NSView {
         primary.lineBreakMode = .byTruncatingTail
         primary.maximumNumberOfLines = 1
         primary.translatesAutoresizingMaskIntoConstraints = false
-        if spec.strikethrough {
-            primary.attributedStringValue = NSAttributedString(
-                string: spec.primary,
-                attributes: [
-                    .font: Applied.Capture.outputFont,
-                    .foregroundColor: color,
-                    .strikethroughStyle: NSUnderlineStyle.single.rawValue,
-                    .strikethroughColor: color,
-                ]
-            )
+        let needsAttributed = spec.strikethrough || (spec.highlight?.isEmpty == false)
+        if needsAttributed {
+            var attrs: [NSAttributedString.Key: Any] = [
+                .font: Applied.Capture.outputFont,
+                .foregroundColor: color,
+            ]
+            if spec.strikethrough {
+                attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
+                attrs[.strikethroughColor] = color
+            }
+            let attributed = NSMutableAttributedString(string: spec.primary, attributes: attrs)
+            if let needle = spec.highlight, !needle.isEmpty {
+                applyHighlight(to: attributed, needle: needle)
+            }
+            primary.attributedStringValue = attributed
         }
         return primary
+    }
+
+    private static func applyHighlight(to s: NSMutableAttributedString, needle: String) {
+        let plain = s.string as NSString
+        var searchRange = NSRange(location: 0, length: plain.length)
+        while searchRange.length > 0 {
+            let found = plain.range(of: needle, options: .caseInsensitive, range: searchRange)
+            if found.location == NSNotFound { break }
+            s.addAttribute(.backgroundColor, value: Applied.Capture.matchHighlightBackground, range: found)
+            s.addAttribute(.foregroundColor, value: Applied.Capture.matchHighlightForeground, range: found)
+            let nextStart = found.location + found.length
+            searchRange = NSRange(location: nextStart, length: plain.length - nextStart)
+        }
     }
 
     private static func makeTags(names: [String], style: TerminalRow.Style) -> NSTextField {
@@ -149,11 +170,13 @@ final class TerminalRowView: NSView {
 
     private static func primaryColor(for style: TerminalRow.Style) -> NSColor {
         switch style {
-        case .normal:   return Applied.Capture.outputTextColor
-        case .selected: return Applied.Capture.terminalSelectedColor
-        case .muted:    return Applied.Capture.outputEmptyColor
-        case .aged:     return Applied.Capture.outputAgedColor
-        case .faint:    return Applied.Capture.outputFaintColor
+        case .normal:           return Applied.Capture.outputTextColor
+        case .selected:         return Applied.Capture.terminalSelectedColor
+        case .muted:            return Applied.Capture.outputEmptyColor
+        case .aged:             return Applied.Capture.outputAgedColor
+        case .faint:            return Applied.Capture.outputFaintColor
+        case .command:          return Applied.Capture.commandColorMuted
+        case .commandSelected:  return Applied.Capture.commandColor
         }
     }
 }

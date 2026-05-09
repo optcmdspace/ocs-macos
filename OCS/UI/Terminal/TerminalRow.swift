@@ -7,6 +7,8 @@ nonisolated enum TerminalRow {
         case muted
         case aged
         case faint
+        case command
+        case commandSelected
     }
 
     nonisolated struct Spec: Sendable, Equatable {
@@ -17,6 +19,8 @@ nonisolated enum TerminalRow {
         let trailingMinWidth: CGFloat
         let style: Style
         let strikethrough: Bool
+        // Case-insensitive substring of `primary` to chip; nil for no chip.
+        let highlight: String?
 
         nonisolated init(
             primary: String,
@@ -25,7 +29,8 @@ nonisolated enum TerminalRow {
             trailing: String? = nil,
             trailingMinWidth: CGFloat = 0,
             style: Style = .normal,
-            strikethrough: Bool = false
+            strikethrough: Bool = false,
+            highlight: String? = nil
         ) {
             self.primary = primary
             self.secondary = secondary
@@ -34,6 +39,7 @@ nonisolated enum TerminalRow {
             self.trailingMinWidth = trailingMinWidth
             self.style = style
             self.strikethrough = strikethrough
+            self.highlight = highlight
         }
 
         nonisolated static func message(_ text: String) -> Self {
@@ -48,8 +54,18 @@ nonisolated enum TerminalRow {
                 trailing: trailing,
                 trailingMinWidth: trailingMinWidth,
                 style: newStyle,
-                strikethrough: strikethrough
+                strikethrough: strikethrough,
+                highlight: highlight
             )
+        }
+
+        // Selection variant per base style: command rows promote to .commandSelected so the renderer
+        // can show full-amber + amber marker, while everything else collapses to the generic .selected.
+        nonisolated func selectedStyle() -> Self {
+            switch style {
+            case .command: return styled(.commandSelected)
+            default:       return styled(.selected)
+            }
         }
     }
 }

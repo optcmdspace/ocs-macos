@@ -2,7 +2,12 @@ import Foundation
 
 @MainActor
 final class EntriesLoader {
-    typealias Dispatch = @Sendable (_ limit: Int, _ scope: ListRecentEntriesQuery.Scope, _ tagFilter: TagName?, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem]
+    typealias Dispatch = @Sendable (
+        _ limit: Int,
+        _ scope: ListRecentEntriesQuery.Scope,
+        _ filter: EntriesFilter,
+        _ before: ListRecentEntriesQuery.Cursor?
+    ) async throws -> [EntryListItem]
 
     enum Outcome {
         case loaded([EntryListItem])
@@ -32,7 +37,7 @@ final class EntriesLoader {
     // so a fast query never flashes a spinner.
     func loadFirst(
         scope: ListRecentEntriesQuery.Scope,
-        tagFilter: TagName? = nil,
+        filter: EntriesFilter = .none,
         onSpinnerReveal: @escaping @MainActor () -> Void,
         onResult: @escaping @MainActor (Outcome) -> Void
     ) {
@@ -47,7 +52,7 @@ final class EntriesLoader {
         }
         task = Task { [weak self] in
             do {
-                let items = try await dispatch(pageSize, scope, tagFilter, nil)
+                let items = try await dispatch(pageSize, scope, filter, nil)
                 if Task.isCancelled { return }
                 self?.revealTask?.cancel()
                 self?.revealTask = nil
@@ -64,7 +69,7 @@ final class EntriesLoader {
 
     func loadMore(
         scope: ListRecentEntriesQuery.Scope,
-        tagFilter: TagName? = nil,
+        filter: EntriesFilter = .none,
         before: ListRecentEntriesQuery.Cursor,
         onResult: @escaping @MainActor (Outcome) -> Void
     ) {
@@ -73,7 +78,7 @@ final class EntriesLoader {
         let pageSize = self.pageSize
         task = Task {
             do {
-                let items = try await dispatch(pageSize, scope, tagFilter, before)
+                let items = try await dispatch(pageSize, scope, filter, before)
                 if Task.isCancelled { return }
                 onResult(.loaded(items))
             } catch {

@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-nonisolated final class EntryReadsGRDB: ListRecentEntriesStore, GetEntryStore, GetEntryStatsStore, EntriesByTagStore {
+nonisolated final class EntryReadsGRDB: ListRecentEntriesStore, GetEntryStore, GetEntryStatsStore, FindEntriesStore {
     private let database: Database
 
     init(database: Database) {
@@ -39,22 +39,31 @@ nonisolated final class EntryReadsGRDB: ListRecentEntriesStore, GetEntryStore, G
         }
     }
 
-    func entries(
-        tagName: String,
+    func find(
+        text: String?,
+        tagNames: [String],
         scope: ListRecentEntriesQuery.Scope,
         limit: Int,
         before: ListRecentEntriesQuery.Cursor?
     ) async throws -> [EntryListItem] {
         try await database.queue.read { db in
             let includeDone: Int = scope == .all ? 1 : 0
+            let hasText: Int = (text?.isEmpty == false) ? 1 : 0
+            let textPattern: String = text.map { "%\($0)%" } ?? ""
+            let tagCount = tagNames.count
+            let tagsJSON: String = Self.encodeTagNamesJSON(tagNames)
             let rows: [Row]
             if let before {
                 rows = try Row.fetchAll(
                     db,
-                    sql: Queries.selectEntriesByTagBefore,
+                    sql: Queries.selectEntriesFindBefore,
                     arguments: [
-                        tagName,
                         includeDone,
+                        hasText,
+                        textPattern,
+                        tagCount,
+                        tagsJSON,
+                        tagCount,
                         before.createdAtMillis,
                         before.createdAtMillis,
                         before.id.uuidString,
@@ -64,8 +73,16 @@ nonisolated final class EntryReadsGRDB: ListRecentEntriesStore, GetEntryStore, G
             } else {
                 rows = try Row.fetchAll(
                     db,
-                    sql: Queries.selectEntriesByTag,
-                    arguments: [tagName, includeDone, limit]
+                    sql: Queries.selectEntriesFind,
+                    arguments: [
+                        includeDone,
+                        hasText,
+                        textPattern,
+                        tagCount,
+                        tagsJSON,
+                        tagCount,
+                        limit,
+                    ]
                 )
             }
             return rows.compactMap(Self.mapRow)
@@ -112,6 +129,13 @@ nonisolated final class EntryReadsGRDB: ListRecentEntriesStore, GetEntryStore, G
                 staleActiveCount: Int(staleActive)
             )
         }
+    }
+
+    private static func encodeTagNamesJSON(_ names: [String]) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: names, options: []),
+              let json = String(data: data, encoding: .utf8)
+        else { return "[]" }
+        return json
     }
 
     // Drops rows whose id text is not parseable as a UUID; the schema CHECK and our writers prevent this in practice.
