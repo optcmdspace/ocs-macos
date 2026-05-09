@@ -3,9 +3,11 @@ import Foundation
 // Dispatch surface is plain closures so UI does not depend on Collaborators or Handlers.
 nonisolated final class Composition: Sendable {
     let dispatchCapture: @Sendable (_ rawText: String) async throws -> EntryListItem
-    let dispatchListRecent: @Sendable (_ limit: Int, _ scope: ListRecentEntriesQuery.Scope, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem]
+    let dispatchListRecent: @Sendable (_ limit: Int, _ scope: ListRecentEntriesQuery.Scope, _ tagFilter: TagName?, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem]
     let dispatchMove: @Sendable (_ entryId: UUID, _ toBin: Bin) async throws -> Void
     let dispatchEntryStats: @Sendable (_ todayStartMillis: Int64, _ yesterdayStartMillis: Int64, _ staleCutoffMillis: Int64) async throws -> EntryStats
+    let dispatchTagSuggestions: DispatchTagSuggestions
+    let dispatchSetEntryTags: DispatchSetEntryTags
 
     #if DEBUG
     let dispatchSeedCapture: @Sendable (_ text: String, _ at: Date) async -> Void
@@ -17,10 +19,15 @@ nonisolated final class Composition: Sendable {
     private let deviceId: UUID
     private let projector: Projector
     private let eventStore: any EventStore
+    private let tagsPublishedReads: TagsPublishedReadsGRDB
+    private let tagReads: TagReadsGRDB
+    private let tagAutocompleteHandler: TagAutocompleteHandler
     private let captureHandler: CaptureEntryHandler
     private let moveHandler: MoveEntryHandler
+    private let setEntryTagsHandler: SetEntryTagsHandler
     private let entryReads: EntryReadsGRDB
     private let listRecentHandler: ListRecentEntriesHandler
+    private let entriesByTagHandler: EntriesByTagHandler
     private let getEntryHandler: GetEntryHandler
     private let getEntryStatsHandler: GetEntryStatsHandler
 
@@ -37,10 +44,23 @@ nonisolated final class Composition: Sendable {
 
         let projector = Projector()
         let eventStore = EventStoreGRDB(database: database, projector: projector)
-        let captureHandler = CaptureEntryHandler(eventStore: eventStore, ids: ids)
+        let tagsPublishedReads = TagsPublishedReadsGRDB(database: database)
+        let tagReads = TagReadsGRDB(database: database)
+        let tagAutocompleteHandler = TagAutocompleteHandler(store: tagReads)
+        let captureHandler = CaptureEntryHandler(
+            eventStore: eventStore,
+            ids: ids,
+            tagIdLookup: tagsPublishedReads
+        )
         let moveHandler = MoveEntryHandler(eventStore: eventStore, ids: ids)
+        let setEntryTagsHandler = SetEntryTagsHandler(
+            eventStore: eventStore,
+            ids: ids,
+            tagIdLookup: tagsPublishedReads
+        )
         let entryReads = EntryReadsGRDB(database: database)
         let listRecentHandler = ListRecentEntriesHandler(store: entryReads)
+        let entriesByTagHandler = EntriesByTagHandler(store: entryReads)
         let getEntryHandler = GetEntryHandler(store: entryReads)
         let getEntryStatsHandler = GetEntryStatsHandler(store: entryReads)
 
@@ -50,10 +70,15 @@ nonisolated final class Composition: Sendable {
         self.deviceId = deviceId
         self.projector = projector
         self.eventStore = eventStore
+        self.tagsPublishedReads = tagsPublishedReads
+        self.tagReads = tagReads
+        self.tagAutocompleteHandler = tagAutocompleteHandler
         self.captureHandler = captureHandler
         self.moveHandler = moveHandler
+        self.setEntryTagsHandler = setEntryTagsHandler
         self.entryReads = entryReads
         self.listRecentHandler = listRecentHandler
+        self.entriesByTagHandler = entriesByTagHandler
         self.getEntryHandler = getEntryHandler
         self.getEntryStatsHandler = getEntryStatsHandler
         self.dispatchCapture = { [captureHandler, getEntryHandler, clock, deviceId] rawText in
@@ -65,8 +90,15 @@ nonisolated final class Composition: Sendable {
             let entryId = try await captureHandler.handle(cmd)
             return try await getEntryHandler.handle(GetEntryQuery(id: entryId))
         }
-        self.dispatchListRecent = { [listRecentHandler] limit, scope, before in
-            try await listRecentHandler.handle(ListRecentEntriesQuery(limit: limit, scope: scope, before: before))
+        self.dispatchListRecent = { [listRecentHandler, entriesByTagHandler] limit, scope, tagFilter, before in
+            if let tag = tagFilter {
+                return try await entriesByTagHandler.handle(
+                    EntriesByTagQuery(tagName: tag, scope: scope, limit: limit, before: before)
+                )
+            }
+            return try await listRecentHandler.handle(
+                ListRecentEntriesQuery(limit: limit, scope: scope, before: before)
+            )
         }
         self.dispatchMove = { [moveHandler, clock, deviceId] entryId, toBin in
             let cmd = MoveEntryCommand(
@@ -85,6 +117,21 @@ nonisolated final class Composition: Sendable {
                     staleCutoffMillis: staleCutoffMillis
                 )
             )
+        }
+        self.dispatchTagSuggestions = { [tagAutocompleteHandler] prefix, limit in
+            try await tagAutocompleteHandler.handle(
+                TagAutocompleteQuery(prefix: prefix, limit: limit)
+            )
+        }
+        self.dispatchSetEntryTags = { [setEntryTagsHandler, clock, deviceId] entryId, toAdd, toRemove in
+            let cmd = SetEntryTagsCommand(
+                entryId: entryId,
+                toAdd: toAdd,
+                toRemove: toRemove,
+                deviceId: deviceId,
+                now: clock.now()
+            )
+            try await setEntryTagsHandler.handle(cmd)
         }
         #if DEBUG
         self.dispatchSeedCapture = { [captureHandler, deviceId] text, at in

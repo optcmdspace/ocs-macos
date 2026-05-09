@@ -3,6 +3,7 @@ import Foundation
 nonisolated struct EntriesListPageState: Sendable, Equatable {
     let list: TerminalListState<EntryListItem>
     let scope: ListRecentEntriesQuery.Scope
+    let tagFilter: TagName?
     let nextCursor: ListRecentEntriesQuery.Cursor?
     let isLoadingMore: Bool
     let exhausted: Bool
@@ -10,10 +11,11 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
     // Stays false during the first ~100ms of a load so a fast query doesn't flicker the spinner.
     let loadingVisible: Bool
 
-    static func empty(windowSize: Int, scope: ListRecentEntriesQuery.Scope) -> EntriesListPageState {
+    static func empty(windowSize: Int, scope: ListRecentEntriesQuery.Scope, tagFilter: TagName? = nil) -> EntriesListPageState {
         EntriesListPageState(
             list: TerminalListState(windowSize: windowSize),
             scope: scope,
+            tagFilter: tagFilter,
             nextCursor: nil,
             isLoadingMore: false,
             exhausted: false,
@@ -33,6 +35,7 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
         EntriesListPageState(
             list: list,
             scope: scope,
+            tagFilter: tagFilter,
             nextCursor: nextCursor,
             isLoadingMore: true,
             exhausted: exhausted,
@@ -45,6 +48,7 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
         EntriesListPageState(
             list: list,
             scope: scope,
+            tagFilter: tagFilter,
             nextCursor: nextCursor,
             isLoadingMore: isLoadingMore,
             exhausted: exhausted,
@@ -65,6 +69,7 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
         return EntriesListPageState(
             list: nextList,
             scope: scope,
+            tagFilter: tagFilter,
             nextCursor: newCursor,
             isLoadingMore: false,
             exhausted: more.count < requestedLimit,
@@ -77,6 +82,7 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
         EntriesListPageState(
             list: list,
             scope: scope,
+            tagFilter: tagFilter,
             nextCursor: nextCursor,
             isLoadingMore: false,
             exhausted: exhausted,
@@ -94,6 +100,10 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
         with(list: list.replacingSelected(with: item))
     }
 
+    func replacing(at index: Int, with item: EntryListItem) -> EntriesListPageState {
+        with(list: list.replacing(at: index, with: item))
+    }
+
     func removingSelected() -> EntriesListPageState {
         with(list: list.removingSelected())
     }
@@ -102,6 +112,7 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
         EntriesListPageState(
             list: newList,
             scope: scope,
+            tagFilter: tagFilter,
             nextCursor: nextCursor,
             isLoadingMore: isLoadingMore,
             exhausted: exhausted,

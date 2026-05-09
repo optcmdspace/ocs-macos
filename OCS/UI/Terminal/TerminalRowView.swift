@@ -24,11 +24,22 @@ final class TerminalRowView: NSView {
         var rightLimit: NSLayoutXAxisAnchor = trailingAnchor
         var rightInset: CGFloat = 0
         if let trailingText = spec.trailing {
-            let trailing = Self.makeTrailing(text: trailingText)
+            let trailing = Self.makeTrailing(text: trailingText, style: spec.style)
             addSubview(trailing)
             constraints.append(contentsOf: Self.trailingConstraints(trailing: trailing, primary: primary, container: self, minWidth: spec.trailingMinWidth))
             rightLimit = trailing.leadingAnchor
             rightInset = Applied.Capture.outputItemGap
+        }
+
+        if spec.secondary == nil, let names = spec.tags, !names.isEmpty {
+            let tags = Self.makeTags(names: names, style: spec.style)
+            addSubview(tags)
+            constraints.append(contentsOf: [
+                tags.trailingAnchor.constraint(equalTo: rightLimit, constant: -rightInset),
+                tags.firstBaselineAnchor.constraint(equalTo: primary.firstBaselineAnchor),
+            ])
+            rightLimit = tags.leadingAnchor
+            rightInset = Applied.Capture.outputTagsLeadingGap
         }
 
         if let secondaryText = spec.secondary {
@@ -85,10 +96,21 @@ final class TerminalRowView: NSView {
         return primary
     }
 
-    private static func makeTrailing(text: String) -> NSTextField {
+    private static func makeTags(names: [String], style: TerminalRow.Style) -> NSTextField {
+        let tags = NSTextField(labelWithAttributedString: TagChips.attributedString(names, selected: style == .selected))
+        tags.alignment = .right
+        tags.lineBreakMode = .byTruncatingHead
+        tags.maximumNumberOfLines = 1
+        tags.translatesAutoresizingMaskIntoConstraints = false
+        tags.setContentHuggingPriority(.required, for: .horizontal)
+        tags.setContentCompressionResistancePriority(.required, for: .horizontal)
+        return tags
+    }
+
+    private static func makeTrailing(text: String, style: TerminalRow.Style) -> NSTextField {
         let trailing = NSTextField(labelWithString: text)
         trailing.font = Applied.Capture.outputTimestampFont
-        trailing.textColor = Applied.Capture.outputTimestampColor
+        trailing.textColor = style == .selected ? Applied.Capture.outputTimestampSelectedColor : Applied.Capture.outputTimestampColor
         trailing.alignment = .right
         trailing.translatesAutoresizingMaskIntoConstraints = false
         trailing.setContentHuggingPriority(.required, for: .horizontal)

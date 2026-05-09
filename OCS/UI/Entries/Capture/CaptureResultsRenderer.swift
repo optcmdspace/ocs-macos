@@ -35,6 +35,11 @@ enum CaptureResultsRenderer {
             return .clear
         case .suggestions(let s):
             return .rows(s.list.renderedRows(CaptureRows.suggestion))
+        case .tagSuggestions(let t):
+            if t.list.isEmpty {
+                return .rows([.message("create tag #\(t.prefix)")])
+            }
+            return .rows(t.list.renderedRows { CaptureRows.tagSuggestion($0, trailingMinWidth: 0) })
         case .entries(let e):
             if e.list.isEmpty {
                 if e.hasError {
@@ -56,7 +61,14 @@ enum CaptureResultsRenderer {
                     // Hold the empty state for ~100ms so a fast query never flashes a spinner.
                     return .clear
                 }
-                let empty = e.scope == .active ? "nothing on your mind" : "no captures yet"
+                let empty: String
+                if let tag = e.tagFilter {
+                    empty = "no captures with #\(tag.value)"
+                } else if e.scope == .active {
+                    empty = "nothing on your mind"
+                } else {
+                    empty = "no captures yet"
+                }
                 return .rows([.message(empty)])
             }
             var rows: [TerminalRow.Spec] = []

@@ -25,7 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             dispatchCapture: composition.dispatchCapture,
             dispatchListRecent: composition.dispatchListRecent,
             dispatchMove: composition.dispatchMove,
-            dispatchEntryStats: composition.dispatchEntryStats
+            dispatchEntryStats: composition.dispatchEntryStats,
+            dispatchTagSuggestions: composition.dispatchTagSuggestions,
+            dispatchSetEntryTags: composition.dispatchSetEntryTags
         )
         captureController = controller
 

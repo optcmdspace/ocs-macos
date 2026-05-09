@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-nonisolated final class EntryReadsGRDB: ListRecentEntriesStore, GetEntryStore, GetEntryStatsStore {
+nonisolated final class EntryReadsGRDB: ListRecentEntriesStore, GetEntryStore, GetEntryStatsStore, EntriesByTagStore {
     private let database: Database
 
     init(database: Database) {
@@ -33,6 +33,39 @@ nonisolated final class EntryReadsGRDB: ListRecentEntriesStore, GetEntryStore, G
                     db,
                     sql: Queries.selectEntriesRecent,
                     arguments: [includeDone, limit]
+                )
+            }
+            return rows.compactMap(Self.mapRow)
+        }
+    }
+
+    func entries(
+        tagName: String,
+        scope: ListRecentEntriesQuery.Scope,
+        limit: Int,
+        before: ListRecentEntriesQuery.Cursor?
+    ) async throws -> [EntryListItem] {
+        try await database.queue.read { db in
+            let includeDone: Int = scope == .all ? 1 : 0
+            let rows: [Row]
+            if let before {
+                rows = try Row.fetchAll(
+                    db,
+                    sql: Queries.selectEntriesByTagBefore,
+                    arguments: [
+                        tagName,
+                        includeDone,
+                        before.createdAtMillis,
+                        before.createdAtMillis,
+                        before.id.uuidString,
+                        limit,
+                    ]
+                )
+            } else {
+                rows = try Row.fetchAll(
+                    db,
+                    sql: Queries.selectEntriesByTag,
+                    arguments: [tagName, includeDone, limit]
                 )
             }
             return rows.compactMap(Self.mapRow)
@@ -91,11 +124,14 @@ nonisolated final class EntryReadsGRDB: ListRecentEntriesStore, GetEntryStore, G
             let bin = Bin(rawValue: binText),
             let createdAtMillis: Int64 = row["created_at"]
         else { return nil }
+        let tagsCsv: String? = row["tags"]
+        let tags: [String] = tagsCsv.map { $0.split(separator: ",").map(String.init) } ?? []
         return EntryListItem(
             id: id,
             text: text,
             bin: bin,
-            createdAt: Date(timeIntervalSince1970: TimeInterval(createdAtMillis) / 1000)
+            createdAt: Date(timeIntervalSince1970: TimeInterval(createdAtMillis) / 1000),
+            tags: tags
         )
     }
 }

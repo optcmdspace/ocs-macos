@@ -9,21 +9,26 @@ struct CapturePanelLayout {
     let results: TerminalView
     let divider: NSView
     let glance: NSTextField
+    let tagPicker: NSTextField
 
     let fieldHeightConstraint: NSLayoutConstraint
     let glanceHeightConstraint: NSLayoutConstraint
     let glanceBottomGapConstraint: NSLayoutConstraint
     let dividerTopConstraint: NSLayoutConstraint
     let resultsTopConstraint: NSLayoutConstraint
+    let tagPickerHeightConstraint: NSLayoutConstraint
+    let tagPickerTopConstraint: NSLayoutConstraint
 
     let lineHeight: CGFloat
     let footerHeight: CGFloat
     let glanceLineHeight: CGFloat
+    let tagPickerHeight: CGFloat
 
     static func build() -> CapturePanelLayout {
         let lineHeight = ceil(Applied.Capture.bodyFont.boundingRectForFont.height)
         let footerHeight = ceil(Applied.Capture.shortcutKeyFont.boundingRectForFont.height)
         let glanceLineHeight = ceil(Applied.Capture.glanceFont.boundingRectForFont.height)
+        let tagPickerHeight = ceil(Applied.Capture.outputTagsFont.boundingRectForFont.height) + 4
         let initialHeight = Applied.Capture.verticalPadding
             + lineHeight
             + Applied.Capture.footerGap
@@ -70,12 +75,22 @@ struct CapturePanelLayout {
         divider.translatesAutoresizingMaskIntoConstraints = false
         divider.isHidden = true
 
+        let tagPicker = NSTextField(labelWithString: "")
+        tagPicker.translatesAutoresizingMaskIntoConstraints = false
+        tagPicker.lineBreakMode = .byWordWrapping
+        tagPicker.maximumNumberOfLines = 0
+        tagPicker.cell?.wraps = true
+        tagPicker.cell?.isScrollable = false
+        tagPicker.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        tagPicker.isHidden = true
+
         background.addSubview(tint)
         background.addSubview(glance)
         background.addSubview(prompt)
         background.addSubview(field)
         background.addSubview(divider)
         background.addSubview(results)
+        background.addSubview(tagPicker)
         background.addSubview(footer)
 
         let fieldHeight = field.heightAnchor.constraint(equalToConstant: lineHeight)
@@ -83,6 +98,8 @@ struct CapturePanelLayout {
         let glanceBottomGap = field.topAnchor.constraint(equalTo: glance.bottomAnchor, constant: 0)
         let dividerTop = divider.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 0)
         let resultsTop = results.topAnchor.constraint(equalTo: divider.bottomAnchor, constant: 0)
+        let tagPickerHeightC = tagPicker.heightAnchor.constraint(equalToConstant: 0)
+        let tagPickerTop = tagPicker.topAnchor.constraint(equalTo: results.bottomAnchor, constant: 0)
 
         NSLayoutConstraint.activate([
             glance.topAnchor.constraint(equalTo: background.topAnchor, constant: Applied.Capture.verticalPadding),
@@ -102,7 +119,11 @@ struct CapturePanelLayout {
             results.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: Applied.Capture.horizontalPadding),
             results.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -Applied.Capture.horizontalPadding),
             resultsTop,
-            footer.topAnchor.constraint(equalTo: results.bottomAnchor, constant: Applied.Capture.footerGap),
+            tagPicker.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: Applied.Capture.horizontalPadding),
+            tagPicker.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -Applied.Capture.horizontalPadding),
+            tagPickerTop,
+            tagPickerHeightC,
+            footer.topAnchor.constraint(equalTo: tagPicker.bottomAnchor, constant: Applied.Capture.footerGap),
             footer.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: Applied.Capture.horizontalPadding),
             footer.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -Applied.Capture.horizontalPadding),
             footer.bottomAnchor.constraint(equalTo: background.bottomAnchor, constant: -Applied.Capture.footerBottomInset),
@@ -118,14 +139,18 @@ struct CapturePanelLayout {
             results: results,
             divider: divider,
             glance: glance,
+            tagPicker: tagPicker,
             fieldHeightConstraint: fieldHeight,
             glanceHeightConstraint: glanceHeight,
             glanceBottomGapConstraint: glanceBottomGap,
             dividerTopConstraint: dividerTop,
             resultsTopConstraint: resultsTop,
+            tagPickerHeightConstraint: tagPickerHeightC,
+            tagPickerTopConstraint: tagPickerTop,
             lineHeight: lineHeight,
             footerHeight: footerHeight,
-            glanceLineHeight: glanceLineHeight
+            glanceLineHeight: glanceLineHeight,
+            tagPickerHeight: tagPickerHeight
         )
     }
 }

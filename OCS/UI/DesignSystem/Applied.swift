@@ -15,6 +15,7 @@ enum Applied {
         static let outputTopGap = Theme.Spacing.md
         static let outputRowSpacing = Theme.Spacing.sm
         static let outputItemGap = Theme.Spacing.md
+        static let outputTagsLeadingGap = Theme.Spacing.lg
         static let dividerHeight = Theme.Stroke.thin
         static let dividerColor = Theme.Color.foregroundFaint
 
@@ -22,6 +23,7 @@ enum Applied {
         static let promptColor = Theme.Color.accent
         static let promptColorMuted = Theme.Color.foregroundMuted
         static let textColor = Theme.Color.foreground
+        static let inputTagColor = Theme.Color.accent
         static let placeholderColor = Theme.Color.foregroundSubtle
         static let footerTextColor = Theme.Color.foregroundSubtle
         static let tintColor = Theme.Color.backgroundScrim
@@ -31,6 +33,7 @@ enum Applied {
         static let outputAgedColor = Theme.Color.foregroundMuted
         static let outputFaintColor = Theme.Color.foregroundSubtle
         static let outputTimestampColor = Theme.Color.foregroundSubtle
+        static let outputTimestampSelectedColor = Theme.Color.foregroundMuted
         static let outputEmptyColor = Theme.Color.foregroundMuted
         static let outputStrikethroughColor = Theme.Color.foregroundDimSolid
 
@@ -66,6 +69,7 @@ enum Applied {
         static let shortcutKeyFont = Theme.Font.md
         static let outputFont = Theme.Font.md
         static let outputTimestampFont = Theme.Font.sm
+        static let outputTagsFont = Theme.Font.sm
         static var outputTimestampMinWidth: CGFloat {
             ceil(("00mo" as NSString).size(withAttributes: [.font: outputTimestampFont]).width)
         }

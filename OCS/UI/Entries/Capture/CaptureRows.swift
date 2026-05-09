@@ -1,13 +1,23 @@
-import Foundation
+import AppKit
 
-nonisolated enum CaptureRows {
+@MainActor
+enum CaptureRows {
     static func suggestion(_ spec: SlashCommand.Spec) -> TerminalRow.Spec {
         .init(primary: spec.token, secondary: spec.description)
+    }
+
+    static func tagSuggestion(_ s: TagSuggestion, trailingMinWidth: CGFloat) -> TerminalRow.Spec {
+        .init(
+            primary: "#\(s.name)",
+            trailing: s.usageCount > 0 ? "\(s.usageCount)" : nil,
+            trailingMinWidth: trailingMinWidth
+        )
     }
 
     static func entry(_ item: EntryListItem, now: Date, trailingMinWidth: CGFloat) -> TerminalRow.Spec {
         .init(
             primary: item.text,
+            tags: item.tags.isEmpty ? nil : item.tags,
             trailing: relativeStamp(from: item.createdAt, now: now),
             trailingMinWidth: trailingMinWidth,
             style: ageStyle(for: item.createdAt, now: now),
@@ -18,6 +28,7 @@ nonisolated enum CaptureRows {
     static func preview(_ item: EntryListItem, now: Date, trailingMinWidth: CGFloat, highlighted: Bool = false) -> TerminalRow.Spec {
         .init(
             primary: item.text,
+            tags: item.tags.isEmpty ? nil : item.tags,
             trailing: relativeStamp(from: item.createdAt, now: now),
             trailingMinWidth: trailingMinWidth,
             style: highlighted ? .normal : .muted,
@@ -25,14 +36,14 @@ nonisolated enum CaptureRows {
         )
     }
 
-    static func ageStyle(for date: Date, now: Date) -> TerminalRow.Style {
+    nonisolated static func ageStyle(for date: Date, now: Date) -> TerminalRow.Style {
         let age = now.timeIntervalSince(date)
         if age >= AgingThresholds.entryStaleAfterSeconds { return .faint }
         if age >= AgingThresholds.entryAgedAfterSeconds { return .aged }
         return .normal
     }
 
-    static func relativeStamp(from date: Date, now: Date) -> String {
+    nonisolated static func relativeStamp(from date: Date, now: Date) -> String {
         if now.timeIntervalSince(date) < 60 { return "now" }
         let comps = Calendar.current.dateComponents(
             [.year, .month, .day, .hour, .minute],

@@ -15,6 +15,8 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     private let history: CaptureHistoryCoordinator
     private let moveDispatcher: EntryMoveDispatcher
     private let dispatchCapture: @Sendable (_ rawText: String) async throws -> EntryListItem
+    private var tagAutocomplete: TagAutocompleteCoordinator!
+    private var tagEditCoordinator: TagEditCoordinator!
 
     private struct RecentSave {
         let id: UUID
@@ -28,12 +30,17 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     private var pendingGlance: Bool = false
     private var savedToastTask: Task<Void, Never>?
     private var recentSave: RecentSave?
+    private var rejectionToastTask: Task<Void, Never>?
+    private var recentRejection: String?
+    private var keyMonitor: Any?
 
     init(
         dispatchCapture: @escaping @Sendable (_ rawText: String) async throws -> EntryListItem,
-        dispatchListRecent: @escaping @Sendable (_ limit: Int, _ scope: ListRecentEntriesQuery.Scope, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem],
+        dispatchListRecent: @escaping @Sendable (_ limit: Int, _ scope: ListRecentEntriesQuery.Scope, _ tagFilter: TagName?, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem],
         dispatchMove: @escaping @Sendable (_ entryId: UUID, _ toBin: Bin) async throws -> Void,
-        dispatchEntryStats: @escaping @Sendable (_ todayStartMillis: Int64, _ yesterdayStartMillis: Int64, _ staleCutoffMillis: Int64) async throws -> EntryStats
+        dispatchEntryStats: @escaping @Sendable (_ todayStartMillis: Int64, _ yesterdayStartMillis: Int64, _ staleCutoffMillis: Int64) async throws -> EntryStats,
+        dispatchTagSuggestions: @escaping DispatchTagSuggestions,
+        dispatchSetEntryTags: @escaping DispatchSetEntryTags
     ) {
         let layout = CapturePanelLayout.build()
         self.layout = layout
@@ -45,7 +52,10 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             bottomGap: Applied.Capture.glanceBottomGap,
             visibleSeconds: Applied.Capture.glanceVisibleSeconds
         )
-        self.preview = PreviewLoader(dispatch: dispatchListRecent)
+        let untagged: @Sendable (Int, ListRecentEntriesQuery.Scope, ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem] = { limit, scope, before in
+            try await dispatchListRecent(limit, scope, nil, before)
+        }
+        self.preview = PreviewLoader(dispatch: untagged)
         self.stats = StatsLoader(dispatch: dispatchEntryStats)
         self.entries = EntriesLoader(dispatch: dispatchListRecent, pageSize: Self.pageSize)
         self.history = CaptureHistoryCoordinator(
@@ -55,6 +65,26 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         self.dispatchCapture = dispatchCapture
 
         super.init()
+
+        self.tagAutocomplete = TagAutocompleteCoordinator(
+            dispatch: dispatchTagSuggestions,
+            windowSize: windowSize,
+            getPage: { [weak self] in self?.page ?? .idle },
+            setPage: { [weak self] in self?.applyPage($0) },
+            onHeightChange: { [weak self] in self?.updatePanelHeight() }
+        )
+
+        self.tagEditCoordinator = TagEditCoordinator(
+            dispatchSuggestions: dispatchTagSuggestions,
+            dispatchSetTags: dispatchSetEntryTags,
+            onChange: { [weak self] in
+                self?.refreshFooter()
+                self?.updatePanelHeight()
+            },
+            onCommit: { [weak self] entryId, applied in
+                self?.applyTagsLocally(entryId: entryId, applied: applied)
+            }
+        )
 
         layout.field.delegate = self
         layout.panel.delegate = self
@@ -68,11 +98,16 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         preview.cancel()
         previewLoading = false
         history.exitRecall(currentField: layout.field.stringValue)
-        let current: SlashSuggestionState = {
-            if case .suggestions(let s) = page { return s }
-            return .empty(windowSize: windowSize)
-        }()
-        applyPage(.suggestions(current.applying(text: layout.field.stringValue)))
+        layout.field.refreshTokenHighlight()
+        let raw = layout.field.stringValue
+        let cursor = layout.field.currentEditor()?.selectedRange.location ?? (raw as NSString).length
+        if !tagAutocomplete.handleFieldChange(raw: raw, cursor: cursor) {
+            let current: SlashSuggestionState = {
+                if case .suggestions(let s) = page { return s }
+                return .empty(windowSize: windowSize)
+            }()
+            applyPage(.suggestions(current.applying(text: raw)))
+        }
         updatePanelHeight()
     }
 
@@ -90,6 +125,9 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         savedToastTask?.cancel()
         savedToastTask = nil
         recentSave = nil
+        rejectionToastTask?.cancel()
+        rejectionToastTask = nil
+        recentRejection = nil
         sessionItems = []
         stats.reset()
         preview.cancel()
@@ -101,6 +139,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             singlePreview = nil
             previewLoading = true
         }
+        tagAutocomplete.cancel()
         glance.hideImmediate()
         let now = Date()
         pendingGlance = glance.isFirstShowOfDay(at: now)
@@ -112,10 +151,12 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         NSApp.activate(ignoringOtherApps: true)
         layout.panel.makeKeyAndOrderFront(nil)
         layout.panel.makeFirstResponder(layout.field)
+        installKeyMonitor()
         if !draft.isEmpty, let editor = layout.field.currentEditor() {
             let len = (draft as NSString).length
             editor.selectedRange = NSRange(location: len, length: 0)
         }
+        layout.field.refreshTokenHighlight()
         kickoffStatsLoad(now: now)
         if previewLoading { kickoffPreviewLoad() }
         Signposts.signposter.endInterval("panel-show", interval)
@@ -128,13 +169,20 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         preview.cancel()
         stats.cancel()
         entries.cancel()
+        tagAutocomplete.cancel()
         history.cancel()
         savedToastTask?.cancel()
         savedToastTask = nil
         recentSave = nil
+        rejectionToastTask?.cancel()
+        rejectionToastTask = nil
+        recentRejection = nil
         sessionItems = []
         singlePreview = nil
         previewLoading = false
+        if tagEditCoordinator.isActive { tagEditCoordinator.exit(commit: false) }
+        layout.setTagPicker(nil)
+        uninstallKeyMonitor()
         layout.panel.orderOut(nil)
     }
 
@@ -165,11 +213,47 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     }
 
     private func refreshFooter() {
-        layout.footer.setHints(CaptureFooterHints.hints(for: page, fieldText: layout.field.stringValue))
+        if let state = tagEditCoordinator?.state {
+            layout.footer.setHints(CaptureFooterHints.hints(forTagEdit: state))
+            let count = state.currentApplied.count
+            layout.footer.setStat(count == 0 ? "no tags" : "\(count) tag\(count == 1 ? "" : "s")")
+            layout.setTagPicker(TagPickerRenderer.attributedString(for: state))
+            return
+        }
+        layout.setTagPicker(nil)
+        let statText: String
+        let statAccent: Bool
         if let bin = recentSave?.bin {
-            layout.footer.setStat("✓ saved to \(bin.rawValue)", accent: true)
+            statText = "✓ saved to \(bin.rawValue)"
+            statAccent = true
+        } else if let message = recentRejection {
+            statText = message
+            statAccent = true
         } else {
-            layout.footer.setStat(CaptureFooterHints.stat(from: stats.stats))
+            statText = CaptureFooterHints.stat(from: stats.stats)
+            statAccent = false
+        }
+        layout.footer.setStat(statText, accent: statAccent)
+        let hints: [CaptureFooterHints.Hint] = statText.count > 20
+            ? []
+            : CaptureFooterHints.hints(for: page, fieldText: layout.field.stringValue)
+        layout.footer.setHints(hints)
+    }
+
+    private func flashRejection(_ message: String) {
+        rejectionToastTask?.cancel()
+        recentRejection = message
+        refreshFooter()
+        let visibleSeconds = Applied.Capture.savedToastSeconds
+        rejectionToastTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(visibleSeconds))
+            if Task.isCancelled { return }
+            await MainActor.run {
+                guard let self else { return }
+                self.rejectionToastTask = nil
+                self.recentRejection = nil
+                self.refreshFooter()
+            }
         }
     }
 
@@ -204,7 +288,10 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         switch SlashCommand.parse(raw) {
         case .list(let scope):
             layout.field.stringValue = ""
-            beginEntriesLoad(scope: scope)
+            beginEntriesLoad(scope: scope, tagFilter: nil)
+        case .listByTag(let scope, let tagName):
+            layout.field.stringValue = ""
+            beginEntriesLoad(scope: scope, tagFilter: tagName)
         case .sound(let on):
             CaptureSoundPreference.setEnabled(on)
             layout.field.stringValue = ""
@@ -217,6 +304,11 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         case .capture(let text):
             guard !text.isEmpty else {
                 if !keepOpen { dismiss() }
+                return
+            }
+            let parsed = HashtagParser.parse(text)
+            if parsed.body.isEmpty {
+                flashRejection("needs body text — tags alone aren't a capture")
                 return
             }
             CaptureSoundPreference.playIfEnabled()
@@ -266,6 +358,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             let len = (text as NSString).length
             editor.selectedRange = NSRange(location: len, length: 0)
         }
+        layout.field.refreshTokenHighlight()
         render()
         refreshFooter()
         updatePanelHeight()
@@ -313,7 +406,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     }
 
     private func moveAndUpdate(item: EntryListItem, to bin: Bin, in state: EntriesListPageState) {
-        let next = EntryListItem(id: item.id, text: item.text, bin: bin, createdAt: item.createdAt)
+        let next = EntryListItem(id: item.id, text: item.text, bin: bin, createdAt: item.createdAt, tags: item.tags)
         applyPage(.entries(state.replacingSelected(with: next)))
         if bin == .done || bin == .trash { dropFromPreview(id: item.id) }
         moveDispatcher.send(entryId: item.id, toBin: bin)
@@ -332,13 +425,14 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         if singlePreview?.id == id { singlePreview = nil }
     }
 
-    private func beginEntriesLoad(scope: ListRecentEntriesQuery.Scope) {
-        let initial = EntriesListPageState.empty(windowSize: windowSize, scope: scope).startingLoad()
+    private func beginEntriesLoad(scope: ListRecentEntriesQuery.Scope, tagFilter: TagName?) {
+        let initial = EntriesListPageState.empty(windowSize: windowSize, scope: scope, tagFilter: tagFilter).startingLoad()
         applyPage(.entries(initial))
         updatePanelHeight()
 
         entries.loadFirst(
             scope: scope,
+            tagFilter: tagFilter,
             onSpinnerReveal: { [weak self] in
                 guard let self else { return }
                 if case .entries(let e) = self.page, e.isLoadingMore, e.list.isEmpty, !e.loadingVisible {
@@ -362,7 +456,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     private func loadMoreEntries(from state: EntriesListPageState) {
         guard let cursor = state.nextCursor else { return }
         applyPage(.entries(state.startingLoad()))
-        entries.loadMore(scope: state.scope, before: cursor) { [weak self] outcome in
+        entries.loadMore(scope: state.scope, tagFilter: state.tagFilter, before: cursor) { [weak self] outcome in
             guard let self, case .entries(let e) = self.page else { return }
             switch outcome {
             case .loaded(let items):
@@ -441,7 +535,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
                     return stepHistoryForward()
                 }
                 if layout.field.stringValue.isEmpty {
-                    beginEntriesLoad(scope: .active)
+                    beginEntriesLoad(scope: .active, tagFilter: nil)
                     return true
                 }
                 return false
@@ -458,6 +552,8 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             }
             applyPage(.suggestions(next))
             return true
+        case .tagSuggestions(let t):
+            return tagAutocomplete.navigate(direction, in: t)
         case .entries(let e):
             if direction == .up && (e.list.isEmpty || e.list.cursor == 0) {
                 entries.cancel()
@@ -480,10 +576,70 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         }
     }
 
+    private func applyTagsLocally(entryId: UUID, applied: Set<String>) {
+        guard case .entries(let e) = page else { return }
+        guard let idx = e.list.items.firstIndex(where: { $0.id == entryId }) else { return }
+        let item = e.list.items[idx]
+        let newItem = EntryListItem(
+            id: item.id,
+            text: item.text,
+            bin: item.bin,
+            createdAt: item.createdAt,
+            tags: applied.sorted()
+        )
+        applyPage(.entries(e.replacing(at: idx, with: newItem)))
+    }
+
+    private func installKeyMonitor() {
+        uninstallKeyMonitor()
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self else { return event }
+            if event.modifierFlags.contains(.command) { return event }
+            if self.tagEditCoordinator.isActive {
+                return self.tagEditCoordinator.handleKey(event) ? nil : event
+            }
+            // 't' on a selected row opens tag edit. Intercept before the field eats it as text.
+            if event.charactersIgnoringModifiers == "t",
+               case .entries(let e) = self.page,
+               let item = e.list.selected {
+                self.tagEditCoordinator.enter(for: item)
+                return nil
+            }
+            return event
+        }
+    }
+
+    private func uninstallKeyMonitor() {
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
+    }
+
     private func autocompleteSuggestion() -> Bool {
-        guard case .suggestions(let s) = page, let pick = s.selected else { return true }
-        layout.field.stringValue = pick.token
-        applyPage(.suggestions(s.applying(text: pick.token)))
+        switch page {
+        case .suggestions(let s):
+            guard let pick = s.selected else { return true }
+            layout.field.stringValue = pick.token
+            layout.field.refreshTokenHighlight()
+            applyPage(.suggestions(s.applying(text: pick.token)))
+            updatePanelHeight()
+            return true
+        case .tagSuggestions(let t):
+            guard let pick = t.selected else { return true }
+            return acceptTagSuggestion(pick, in: t)
+        default:
+            return true
+        }
+    }
+
+    private func acceptTagSuggestion(_ pick: TagSuggestion, in state: TagSuggestionState) -> Bool {
+        let result = tagAutocomplete.acceptSelection(pick, state: state, currentText: layout.field.stringValue)
+        layout.field.stringValue = result.text
+        if let editor = layout.field.currentEditor() {
+            editor.selectedRange = NSRange(location: result.cursor, length: 0)
+        }
+        layout.field.refreshTokenHighlight()
         updatePanelHeight()
         return true
     }

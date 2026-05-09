@@ -36,6 +36,12 @@ nonisolated final class EventStoreGRDB: EventStore {
             try insertEntryCaptured(e, in: db)
         case let e as EntryMoved:
             try insertEntryMoved(e, in: db)
+        case let e as EntryTagged:
+            try insertEntryTagged(e, in: db)
+        case let e as EntryUntagged:
+            try insertEntryUntagged(e, in: db)
+        case let e as TagCreated:
+            try insertTagCreated(e, in: db)
         default:
             preconditionFailure("EventStoreGRDB: unknown event \(type(of: event))")
         }
@@ -61,6 +67,45 @@ nonisolated final class EventStoreGRDB: EventStore {
                 event.id.uuidString,
                 event.entryId.uuidString,
                 event.toBin.rawValue,
+                event.deviceId.uuidString,
+                event.createdAt.unixMillis,
+            ]
+        )
+    }
+
+    private static func insertEntryTagged(_ event: EntryTagged, in db: GRDB.Database) throws {
+        try db.execute(
+            sql: Queries.insertEntryEventTagged,
+            arguments: [
+                event.id.uuidString,
+                event.entryId.uuidString,
+                event.tagId.uuidString,
+                event.deviceId.uuidString,
+                event.createdAt.unixMillis,
+            ]
+        )
+    }
+
+    private static func insertEntryUntagged(_ event: EntryUntagged, in db: GRDB.Database) throws {
+        try db.execute(
+            sql: Queries.insertEntryEventUntagged,
+            arguments: [
+                event.id.uuidString,
+                event.entryId.uuidString,
+                event.tagId.uuidString,
+                event.deviceId.uuidString,
+                event.createdAt.unixMillis,
+            ]
+        )
+    }
+
+    private static func insertTagCreated(_ event: TagCreated, in db: GRDB.Database) throws {
+        try db.execute(
+            sql: Queries.insertTagEventCreated,
+            arguments: [
+                event.id.uuidString,
+                event.tagId.uuidString,
+                event.name,
                 event.deviceId.uuidString,
                 event.createdAt.unixMillis,
             ]

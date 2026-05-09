@@ -74,6 +74,13 @@ nonisolated struct TerminalListState<Item: Sendable & Equatable>: Sendable, Equa
         return Self(items: next, cursor: cursor, windowSize: windowSize)
     }
 
+    func replacing(at index: Int, with item: Item) -> Self {
+        guard items.indices.contains(index) else { return self }
+        var next = items
+        next[index] = item
+        return Self(items: next, cursor: cursor, windowSize: windowSize)
+    }
+
     func removingSelected() -> Self {
         guard items.indices.contains(cursor) else { return self }
         var next = items

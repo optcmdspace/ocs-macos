@@ -12,6 +12,7 @@ nonisolated enum TerminalRow {
     nonisolated struct Spec: Sendable, Equatable {
         let primary: String
         let secondary: String?
+        let tags: [String]?
         let trailing: String?
         let trailingMinWidth: CGFloat
         let style: Style
@@ -20,6 +21,7 @@ nonisolated enum TerminalRow {
         nonisolated init(
             primary: String,
             secondary: String? = nil,
+            tags: [String]? = nil,
             trailing: String? = nil,
             trailingMinWidth: CGFloat = 0,
             style: Style = .normal,
@@ -27,6 +29,7 @@ nonisolated enum TerminalRow {
         ) {
             self.primary = primary
             self.secondary = secondary
+            self.tags = tags
             self.trailing = trailing
             self.trailingMinWidth = trailingMinWidth
             self.style = style
@@ -41,6 +44,7 @@ nonisolated enum TerminalRow {
             .init(
                 primary: primary,
                 secondary: secondary,
+                tags: tags,
                 trailing: trailing,
                 trailingMinWidth: trailingMinWidth,
                 style: newStyle,

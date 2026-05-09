@@ -1,7 +1,7 @@
 import AppKit
 
 extension CapturePanelLayout {
-    func panelHeight(fieldHeight: CGFloat, outputHeight: CGFloat, glanceVisible: Bool) -> CGFloat {
+    func panelHeight(fieldHeight: CGFloat, outputHeight: CGFloat, glanceVisible: Bool, tagPickerVisible: Bool) -> CGFloat {
         let glanceContribution = glanceVisible ? glanceLineHeight + Applied.Capture.glanceBottomGap : 0
         let outputContribution = outputHeight > 0
             ? Applied.Capture.outputTopGap
@@ -9,10 +9,14 @@ extension CapturePanelLayout {
                 + Applied.Capture.outputTopGap
                 + outputHeight
             : 0
+        let tagPickerContribution = tagPickerVisible
+            ? tagPickerHeightConstraint.constant + Applied.Capture.outputTopGap
+            : 0
         return Applied.Capture.verticalPadding
             + glanceContribution
             + fieldHeight
             + outputContribution
+            + tagPickerContribution
             + Applied.Capture.footerGap
             + footerHeight
             + Applied.Capture.footerBottomInset
@@ -38,7 +42,7 @@ extension CapturePanelLayout {
     func resetPanelHeight(glanceVisible: Bool) {
         let h = lineHeight
         fieldHeightConstraint.constant = h
-        setPanelHeight(panelHeight(fieldHeight: h, outputHeight: currentOutputHeight(), glanceVisible: glanceVisible))
+        setPanelHeight(panelHeight(fieldHeight: h, outputHeight: currentOutputHeight(), glanceVisible: glanceVisible, tagPickerVisible: !tagPicker.isHidden))
     }
 
     func updatePanelHeight(forText text: String, glanceVisible: Bool) {
@@ -53,7 +57,7 @@ extension CapturePanelLayout {
         )
         let fieldH = max(lineHeight, ceil(bounding.height))
         fieldHeightConstraint.constant = fieldH
-        setPanelHeight(panelHeight(fieldHeight: fieldH, outputHeight: currentOutputHeight(), glanceVisible: glanceVisible))
+        setPanelHeight(panelHeight(fieldHeight: fieldH, outputHeight: currentOutputHeight(), glanceVisible: glanceVisible, tagPickerVisible: !tagPicker.isHidden))
     }
 
     func showDivider(_ visible: Bool) {
@@ -66,6 +70,26 @@ extension CapturePanelLayout {
     func clearResults() {
         results.clear()
         showDivider(false)
+    }
+
+    func setTagPicker(_ content: NSAttributedString?) {
+        guard let content, content.length > 0 else {
+            tagPicker.attributedStringValue = NSAttributedString()
+            tagPicker.isHidden = true
+            tagPickerHeightConstraint.constant = 0
+            tagPickerTopConstraint.constant = 0
+            return
+        }
+        tagPicker.attributedStringValue = content
+        let availableWidth = Applied.Capture.panelWidth - 2 * Applied.Capture.horizontalPadding
+        let bounding = content.boundingRect(
+            with: NSSize(width: availableWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+        let contentHeight = ceil(bounding.height) + 4
+        tagPicker.isHidden = false
+        tagPickerHeightConstraint.constant = max(tagPickerHeight, contentHeight)
+        tagPickerTopConstraint.constant = Applied.Capture.outputTopGap
     }
 
     func position() {

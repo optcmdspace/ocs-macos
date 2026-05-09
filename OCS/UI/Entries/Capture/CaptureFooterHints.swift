@@ -12,14 +12,24 @@ enum CaptureFooterHints {
             }
             return [("⏎", "to submit"), ("⌘⏎", "to submit and continue")]
         case .suggestions:
-            return [("↑↓", "to navigate"), ("⇥", "to complete"), ("⏎", "to run")]
+            return [("↑↓", "to navigate"), ("tab", "to complete"), ("⏎", "to run")]
+        case .tagSuggestions:
+            return [("↑↓", "to navigate"), ("tab", "to complete"), ("⏎", "to submit")]
         case .entries(let e):
             if e.list.isEmpty {
                 return [("↑", "to go back")]
             }
             let enterLabel = e.list.selected?.bin == .done ? "to undo done" : "to mark done"
-            return [("↑↓", "to navigate"), ("⏎", enterLabel), ("⌫", "to delete")]
+            return [("↑↓", "to navigate"), ("⏎", enterLabel), ("⌫", "to delete"), ("t", "to tag")]
         }
+    }
+
+    static func hints(forTagEdit state: TagEditState) -> [Hint] {
+        if state.newTagDraft != nil {
+            return [("⏎", "to add"), ("⌫", "to edit"), ("esc", "to cancel")]
+        }
+        let commitOrBack: Hint = state.hasChanges ? ("⏎", "to commit") : ("esc", "to back")
+        return [("←→", "to move"), ("space", "to toggle"), ("any char", "for new"), commitOrBack]
     }
 
     static func stat(from stats: EntryStats?) -> String {

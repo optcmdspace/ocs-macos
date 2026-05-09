@@ -4,6 +4,7 @@ enum Theme {
     @MainActor
     enum Color {
         static let accent = NSColor(red: 0x17 / 255.0, green: 0xb8 / 255.0, blue: 0xb0 / 255.0, alpha: 1.0)
+        static let accentMuted = NSColor(red: 0x17 / 255.0, green: 0xb8 / 255.0, blue: 0xb0 / 255.0, alpha: 0.5)
 
         static let foreground = NSColor(white: 1.0, alpha: 0.92)
         static let foregroundMuted = NSColor(white: 1.0, alpha: 0.45)

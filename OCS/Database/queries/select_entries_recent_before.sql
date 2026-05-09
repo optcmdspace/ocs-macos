@@ -1,8 +1,16 @@
-SELECT id, text, bin, created_at
-  FROM entries
- WHERE bin != 'trash'
-   AND (? = 1 OR bin != 'done')
-   AND (created_at < ?
-        OR (created_at = ? AND id < ?))
- ORDER BY created_at DESC, id DESC
+SELECT e.id, e.text, e.bin, e.created_at,
+       (SELECT GROUP_CONCAT(name, ',') FROM (
+          SELECT t.name
+            FROM entry_tags et
+            JOIN tags t ON t.id = et.tag_id
+           WHERE et.entry_id = e.id
+             AND t.id = t.canonical_id
+           ORDER BY t.name
+       )) AS tags
+  FROM entries e
+ WHERE e.bin != 'trash'
+   AND (? = 1 OR e.bin != 'done')
+   AND (e.created_at < ?
+        OR (e.created_at = ? AND e.id < ?))
+ ORDER BY e.created_at DESC, e.id DESC
  LIMIT ?;

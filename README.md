@@ -6,7 +6,7 @@
 
 Quick capture for macOS. Press ⌥⌘Space anywhere, type, hit Enter. The thought is in your inbox.
 
-Free forever. No account. Local-first. Open source.
+Free forever | No account | Local-first | Open source.
 
 ![OCS capture panel](docs/screenshots/hero.webp)
 
@@ -29,8 +29,11 @@ The cask downloads the signed DMG, copies the app to `/Applications`, and launch
 
 ### one-time setup (either method)
 
-- Free the hotkey: macOS binds ⌥⌘Space to "Show Finder search window" by default. Open System Settings -> Keyboard -> Keyboard Shortcuts -> Spotlight, and uncheck **Show Finder search window**.
-- OCS adds itself to Login Items on first launch so the hotkey survives reboots. To opt out, disable it in System Settings -> General -> Login Items.
+> [!IMPORTANT]
+> Free the hotkey: macOS binds ⌥⌘Space to "Show Finder search window" by default. **Open System Settings -> Keyboard -> Keyboard Shortcuts -> Spotlight, and uncheck **Show Finder search window**.**
+
+> [!NOTE]
+> OCS adds itself to Login Items on first launch so the hotkey survives reboots. To opt out, disable it in System Settings -> General -> Login Items.
 
 Requires macOS 14 (Sonoma) or later. Apple silicon and Intel.
 
