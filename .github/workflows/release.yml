@@ -20,6 +20,7 @@ jobs:
   release:
     name: Build, sign, notarize, publish
     runs-on: macos-26
+    environment: prod
     timeout-minutes: 60
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.4.app/Contents/Developer
@@ -203,11 +204,13 @@ jobs:
           xcrun stapler validate "${{ steps.meta.outputs.stable_dmg_path }}"
 
       - name: Summarize release
+        id: summary
         run: |
           DMG="${{ steps.meta.outputs.dmg_path }}"
           SHA=$(shasum -a 256 "$DMG" | awk '{print $1}')
           NAME=$(basename "$DMG")
           STABLE_NAME=$(basename "${{ steps.meta.outputs.stable_dmg_path }}")
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           {
             echo "## Release ${{ steps.meta.outputs.version }}"
             echo ""
@@ -240,6 +243,25 @@ jobs:
             --title "$TAG" \
             --generate-notes \
             --verify-tag
+
+      - name: Bump cask in tap
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_PAT }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          SHA: ${{ steps.summary.outputs.sha }}
+        run: |
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/optcmdspace/homebrew-ocs.git" tap
+          cd tap
+          sed -i '' "s|version \".*\"|version \"$VERSION\"|" Casks/optcmdspace.rb
+          sed -i '' "s|sha256 \".*\"|sha256 \"$SHA\"|" Casks/optcmdspace.rb
+          if git diff --quiet; then
+            echo "cask already at $VERSION; skipping"
+            exit 0
+          fi
+          git -c user.name="Rodrigo Costa" \
+              -c user.email="rodrigo@optcmd.space" \
+              commit -am "chore: bump cask to $VERSION"
+          git push origin main
 
       - name: Clean up keychain
         if: always()
