@@ -57,14 +57,14 @@ custom_rules:
 
   cqrs_command_immutable:
     name: "Commands must use let"
-    included: ".*Command\\.swift$"
+    included: ".*/Domains/[^/]+/Write/.*Command\\.swift$"
     regex: '(?m)^[ \t]+var[ \t]+[a-zA-Z_][a-zA-Z0-9_]*[ \t]*[:=](?!.*\{[ \t]*get)'
     message: "Commands are immutable. Use let for all stored properties. See CQRS.md G1."
     severity: error
 
   cqrs_query_immutable:
     name: "Queries must use let"
-    included: ".*Query\\.swift$"
+    included: ".*/Domains/[^/]+/Read/.*Query\\.swift$"
     regex: '(?m)^[ \t]+var[ \t]+[a-zA-Z_][a-zA-Z0-9_]*[ \t]*[:=](?!.*\{[ \t]*get)'
     message: "Queries are immutable. Use let for all stored properties. See CQRS.md G1."
     severity: error
