@@ -233,17 +233,42 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          NOTES_FILE="$BUILD_DIR/release-notes.md"
+          awk -v v="${{ steps.meta.outputs.version }}" '
+            $0 ~ "^## \\[" v "\\]" { flag=1; next }
+            flag && /^## \[/        { exit }
+            flag                    { print }
+          ' CHANGELOG.md > "$NOTES_FILE"
+          if grep -q '[^[:space:]]' "$NOTES_FILE"; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "path=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
           DMG: ${{ steps.meta.outputs.dmg_path }}
           STABLE_DMG: ${{ steps.meta.outputs.stable_dmg_path }}
+          NOTES_FOUND: ${{ steps.notes.outputs.found }}
+          NOTES_PATH: ${{ steps.notes.outputs.path }}
         run: |
-          gh release create "$TAG" "$DMG" "$STABLE_DMG" \
-            --title "$TAG" \
-            --generate-notes \
-            --verify-tag
+          if [ "$NOTES_FOUND" = "true" ]; then
+            gh release create "$TAG" "$DMG" "$STABLE_DMG" \
+              --title "$TAG" \
+              --notes-file "$NOTES_PATH" \
+              --verify-tag
+          else
+            gh release create "$TAG" "$DMG" "$STABLE_DMG" \
+              --title "$TAG" \
+              --generate-notes \
+              --verify-tag
+          fi
 
       - name: Bump cask in tap
         env:
