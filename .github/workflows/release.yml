@@ -240,6 +240,7 @@ jobs:
           awk -v v="${{ steps.meta.outputs.version }}" '
             $0 ~ "^## \\[" v "\\]" { flag=1; next }
             flag && /^## \[/        { exit }
+            flag && /^\[[^]]+\]:/   { exit }
             flag                    { print }
           ' CHANGELOG.md > "$NOTES_FILE"
           if grep -q '[^[:space:]]' "$NOTES_FILE"; then
