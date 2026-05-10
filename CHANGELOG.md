@@ -12,6 +12,28 @@ On release, rename [Unreleased] to [x.y.z] - YYYY-MM-DD and start a new [Unrelea
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-09
+
+### Added
+
+- Hashtags in capture: `#tag` is parsed into a separate tag set on save and rendered as colored chips in the list.
+- Inline tag suggestions as you type `#`.
+- `t` on a selected list entry opens a tag picker.
+- `/find <text> #tags` slash command, with results streaming as you type and the matching substring chipped on each row.
+- `/set` namespace for settings. `/sound on|off` moved under `/set sound on|off`.
+- Slash autocomplete descends a tree (`/`, `/set`, `/set sound`) and tints the input cursor amber when the leading token matches a known command.
+- App adds itself to Login Items on first launch.
+- Homebrew install via `brew install --cask ocs` using tap.
+
+### Changed
+
+- `/list` is gone, replaced by `/find`.
+- UUIDv7 emission is monotonic, so fold order matches emission order across peers.
+
+### Fixed
+
+- Tag name collisions in the projector resolve to the lower id; the loser is demoted and its `entry_tags` migrate to the winner.
+
 ## [0.1.0] - 2026-05-09
 
 ### Added
@@ -25,5 +47,6 @@ On release, rename [Unreleased] to [x.y.z] - YYYY-MM-DD and start a new [Unrelea
 - Runs as an accessory app: no Dock icon, no menu bar item.
 - Signed and notarized DMG distribution.
 
-[Unreleased]: https://github.com/optcmdspace/ocs-macos/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/optcmdspace/ocs-macos/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/optcmdspace/ocs-macos/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/optcmdspace/ocs-macos/releases/tag/v0.1.0
