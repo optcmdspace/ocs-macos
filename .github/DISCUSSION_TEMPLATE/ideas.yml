@@ -1,0 +1,29 @@
+title: "[idea]: "
+labels: [idea]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas live here so we can talk before they become feature requests. OCS keeps a deliberately small surface. Most ideas don't ship, but the conversation still helps. Accepted ideas get promoted to issues by maintainers.
+  - type: textarea
+    id: problem
+    attributes:
+      label: what's the friction?
+      description: Describe the moment this would help. Be concrete.
+    validations:
+      required: true
+  - type: textarea
+    id: sketch
+    attributes:
+      label: rough sketch
+      description: A few sentences. UI, hotkey, behavior, whatever's relevant.
+    validations:
+      required: true
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: manifesto check
+      options:
+        - label: keeps the surface small
+        - label: no badges, streaks, or nags
+        - label: works offline

@@ -1,26 +1,30 @@
 name: Bug report
 description: Something doesn't work the way it should.
-title: "[Bug]: "
+title: "[bug]: "
 labels: [bug]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Not sure if it's a bug? Ask in [Q&A](https://github.com/optcmdspace/ocs-macos/discussions/categories/q-a) first. That's the right place for "is this expected?" questions.
   - type: checkboxes
     id: preflight
     attributes:
-      label: Preflight
+      label: preflight
       options:
         - label: I searched existing issues and didn't find a duplicate.
           required: true
   - type: textarea
     id: what-happened
     attributes:
-      label: What happened?
+      label: what happened?
       description: Describe the bug. What did you expect, and what did you see instead?
     validations:
       required: true
   - type: textarea
     id: reproduction
     attributes:
-      label: Steps to reproduce
+      label: steps to reproduce
       placeholder: |
         1. Press ⌥⌘Space
         2. Type ...
@@ -30,21 +34,21 @@ body:
   - type: dropdown
     id: area
     attributes:
-      label: Where does it happen?
+      label: where does it happen?
       multiple: true
       options:
-        - Capture panel (typing, submit)
-        - List view (Tab, navigation)
-        - Global hotkey
-        - Persistence (data on disk)
-        - Install or first launch
-        - Other
+        - capture panel (typing, submit)
+        - list view (↓, navigation)
+        - global hotkey
+        - persistence (data on disk)
+        - install or first launch
+        - other
     validations:
       required: true
   - type: input
     id: version
     attributes:
-      label: OCS version
+      label: ocs version
       description: From the DMG filename or the About window.
     validations:
       required: true
@@ -58,6 +62,6 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Logs or screenshots
+      label: logs or screenshots
       description: Optional. Console.app entries from the OCS process, or a screenshot of what you saw.
       render: shell

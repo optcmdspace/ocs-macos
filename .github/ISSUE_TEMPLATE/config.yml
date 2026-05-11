@@ -1,11 +1,17 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Question
+  - name: feature request or idea
+    url: https://github.com/optcmdspace/ocs-macos/discussions/categories/ideas
+    about: Start as a discussion. Accepted ideas get promoted to issues by maintainers.
+  - name: question
     url: https://github.com/optcmdspace/ocs-macos/discussions/categories/q-a
     about: Ask how to do something with OCS.
-  - name: Idea or general discussion
-    url: https://github.com/optcmdspace/ocs-macos/discussions/categories/ideas
-    about: Talk through a rough idea before filing a feature request.
-  - name: Security vulnerability
+  - name: show what you made
+    url: https://github.com/optcmdspace/ocs-macos/discussions/categories/show-and-tell
+    about: Share a workflow, script, or setup.
+  - name: see what's new
+    url: https://github.com/optcmdspace/ocs-macos/discussions/categories/announcements
+    about: Release notes and project updates.
+  - name: security vulnerability
     url: https://github.com/optcmdspace/ocs-macos/security/advisories/new
     about: Report a vulnerability privately. Do not open a public issue.

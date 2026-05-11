@@ -1,0 +1,24 @@
+title: "[q]: "
+labels: [question]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before you ask: the [README](https://github.com/optcmdspace/ocs-macos#readme), [shortcuts page](https://optcmd.space/shortcuts), and [changelog](https://optcmd.space/changelog) cover most setup and usage questions.
+  - type: textarea
+    id: question
+    attributes:
+      label: what are you trying to do?
+      description: Describe the goal, not just the error. Context helps people give a useful answer.
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: what have you tried?
+      description: Optional. Anything you've already ruled out saves a round-trip.
+  - type: input
+    id: version
+    attributes:
+      label: ocs version
+      description: From the DMG filename or the About window. Skip if not relevant.

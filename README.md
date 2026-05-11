@@ -8,6 +8,8 @@ Quick capture for macOS. Press ⌥⌘Space anywhere, type, hit Enter. The though
 
 Free forever | No account | Local-first | Open source.
 
+Site: [optcmd.space](https://optcmd.space) · What's new: [CHANGELOG.md](CHANGELOG.md)
+
 ![OCS capture panel](docs/screenshots/hero.webp)
 
 ## install
@@ -39,12 +41,11 @@ Requires macOS 14 (Sonoma) or later. Apple silicon and Intel.
 
 ## use it
 
-- ⌥⌘Space opens the panel from any app
-- Type, Enter to save
-- ↓ to view past captures
-- Esc dismisses
+Once installed, press ⌥⌘Space, type any thought, press Enter. The panel disappears and the thought is saved. That's the loop. With ↓ you can view past captures.
 
 The hotkey is the entire surface. No dock icon, no menu bar item, no preferences window.
+
+Full keystroke reference: [optcmd.space/shortcuts](https://optcmd.space/shortcuts).
 
 ## where the data lives
 
@@ -62,9 +63,10 @@ The global hotkey is registered with macOS so the panel can open from any app. O
 - [x] Type and save to a local SQLite store
 - [x] List view of past captures, edit and delete
 - [x] Signed and notarized DMG
-- [ ] Inline tags (`#work`) and dates (`tomorrow`, `friday`)
-- [ ] `/find` for substring, tag, and date in a single query
-- [ ] Keyboard triage in the list (tag, move, convert)
+- [x] Inline tags (`#work`) and tag triage in the list (`t`)
+- [x] `/find` for substring and tag in a single query
+- [ ] Inline dates (`tomorrow`, `friday`) and date filters in `/find`
+- [ ] Move to bin (`b`) and convert to note (`n`)
 - [ ] Encrypted sync, opt-in and end-to-end (the only paid product)
 - [ ] iOS companion
 - [ ] Command-line interface
@@ -77,7 +79,18 @@ The app is free forever. No upsell, no feature gate, no charging later.
 
 The one paid product is optional encrypted sync across your devices. It's opt-in, end-to-end encrypted, and the only way money flows into this project. You are completely fine without it; most people won't use it.
 
+Interested in sync? Email rodrigo@optcmd.space about what devices you'd sync between so I can prioritize :)
+
 No venture capital. No advertising. No telemetry by default. The full plain-text version is on [optcmd.space](https://optcmd.space).
+
+## community
+
+OCS users share their workflows here. See what they've made, ask how, or sketch your own.
+
+- [Show and tell](https://github.com/optcmdspace/ocs-macos/discussions/categories/show-and-tell): workflows, scripts, and setups other people are sharing.
+- [Ideas](https://github.com/optcmdspace/ocs-macos/discussions/categories/ideas): rough ideas before they become feature requests.
+- [Q&A](https://github.com/optcmdspace/ocs-macos/discussions/categories/q-a): how-to questions.
+- [Bugs](https://github.com/optcmdspace/ocs-macos/issues/new?template=bug_report.yml): something doesn't work the way it should.
 
 ## build from source
 

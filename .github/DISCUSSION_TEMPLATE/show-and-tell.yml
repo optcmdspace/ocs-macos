@@ -1,0 +1,27 @@
+title: "[show]: "
+labels: [show-and-tell]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: what did you make or set up?
+      description: Workflows, scripts, integrations, tag systems, anything OCS-related.
+    validations:
+      required: true
+  - type: textarea
+    id: media
+    attributes:
+      label: screenshot or recording
+      description: Strongly recommended. Posts with a screenshot or short recording get far more replies than text-only ones. Drag and drop into the field.
+  - type: textarea
+    id: takeaway
+    attributes:
+      label: what can someone else borrow from this?
+      description: One line. The part another user could copy or adapt for their own setup.
+    validations:
+      required: true
+  - type: input
+    id: external
+    attributes:
+      label: posted publicly anywhere?
+      description: Optional. Link to your tweet, mastodon, blog, or wherever this lives. Helps others find it.

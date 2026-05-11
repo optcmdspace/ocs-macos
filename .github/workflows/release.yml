@@ -15,6 +15,7 @@ concurrency:
 
 permissions:
   contents: write
+  discussions: write
 
 jobs:
   release:
@@ -289,6 +290,40 @@ jobs:
               -c user.email="rodrigo@optcmd.space" \
               commit -am "chore: bump cask to $VERSION"
           git push origin main
+
+      - name: Announce release in Discussions
+        id: announce
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          NOTES_FOUND: ${{ steps.notes.outputs.found }}
+          NOTES_PATH: ${{ steps.notes.outputs.path }}
+          REPO: ${{ github.repository }}
+          REPO_ID: R_kgDOSYOcLA
+          CATEGORY_ID: DIC_kwDOSYOcLM4C8ufP
+        run: |
+          if [ "$NOTES_FOUND" = "true" ]; then
+            NOTES=$(cat "$NOTES_PATH")
+          else
+            NOTES="See the [release page](https://github.com/$REPO/releases/tag/$TAG) for details."
+          fi
+          BODY=$(printf '%s\n\n---\n\n[download](https://github.com/%s/releases/tag/%s) · [changelog](https://optcmd.space/changelog)\n\nsaw something weird? reply here. built a workflow worth sharing? post it in [show-and-tell](https://github.com/%s/discussions/categories/show-and-tell).\n' \
+            "$NOTES" "$REPO" "$TAG" "$REPO")
+          # shellcheck disable=SC2016  # $r/$c/$t/$b are GraphQL variables, not shell expansions
+          gh api graphql \
+            -f query='mutation($r:ID!,$c:ID!,$t:String!,$b:String!){createDiscussion(input:{repositoryId:$r,categoryId:$c,title:$t,body:$b}){discussion{url}}}' \
+            -f r="$REPO_ID" \
+            -f c="$CATEGORY_ID" \
+            -f t="release $TAG" \
+            -f b="$BODY"
+
+      - name: Flag missing release announcement
+        if: steps.announce.outcome == 'failure'
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          echo "::warning::Release announcement failed for ${TAG}. The release itself shipped; the Discussions thread was not created. See the previous step's logs."
 
       - name: Clean up keychain
         if: always()
