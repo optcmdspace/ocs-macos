@@ -7,8 +7,10 @@ final class TerminalRowView: NSView {
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
 
+        let wrapsPrimary = spec.style == .selected
+
         let marker = Self.makeMarker(style: spec.style)
-        let primary = Self.makePrimary(spec: spec)
+        let primary = Self.makePrimary(spec: spec, wraps: wrapsPrimary)
         addSubview(marker)
         addSubview(primary)
 
@@ -21,6 +23,9 @@ final class TerminalRowView: NSView {
             primary.bottomAnchor.constraint(equalTo: bottomAnchor),
         ]
 
+        var trailingField: NSTextField?
+        var tagsField: NSTextField?
+
         var rightLimit: NSLayoutXAxisAnchor = trailingAnchor
         var rightInset: CGFloat = 0
         if let trailingText = spec.trailing {
@@ -29,11 +34,13 @@ final class TerminalRowView: NSView {
             constraints.append(contentsOf: Self.trailingConstraints(trailing: trailing, primary: primary, container: self, minWidth: spec.trailingMinWidth))
             rightLimit = trailing.leadingAnchor
             rightInset = Applied.Capture.outputItemGap
+            trailingField = trailing
         }
 
         if spec.secondary == nil, let names = spec.tags, !names.isEmpty {
             let tags = Self.makeTags(names: names, style: spec.style)
             addSubview(tags)
+            tagsField = tags
             constraints.append(contentsOf: [
                 tags.trailingAnchor.constraint(equalTo: rightLimit, constant: -rightInset),
                 tags.firstBaselineAnchor.constraint(equalTo: primary.firstBaselineAnchor),
@@ -59,11 +66,34 @@ final class TerminalRowView: NSView {
             constraints.append(primary.trailingAnchor.constraint(lessThanOrEqualTo: rightLimit, constant: -rightInset))
         }
 
+        if wrapsPrimary {
+            primary.preferredMaxLayoutWidth = Self.wrapWidth(
+                trailing: trailingField,
+                tags: tagsField,
+                trailingMinWidth: spec.trailingMinWidth
+            )
+        }
+
         NSLayoutConstraint.activate(constraints)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    private static func wrapWidth(trailing: NSTextField?, tags: NSTextField?, trailingMinWidth: CGFloat) -> CGFloat {
+        let rowWidth = Applied.Capture.panelWidth - 2 * Applied.Capture.horizontalPadding
+        let sideInset = Applied.Capture.terminalMarkerWidth + Applied.Capture.terminalMarkerGap
+        var reserved = sideInset
+        if let trailing {
+            reserved += Applied.Capture.outputItemGap
+                + max(ceil(trailing.intrinsicContentSize.width), trailingMinWidth)
+                + sideInset
+        }
+        if let tags {
+            reserved += Applied.Capture.outputTagsLeadingGap + ceil(tags.intrinsicContentSize.width)
+        }
+        return max(rowWidth - reserved, 1)
+    }
 
     private static func makeMarker(style: TerminalRow.Style) -> NSTextField {
         let visible = style == .selected || style == .commandSelected
@@ -77,13 +107,15 @@ final class TerminalRowView: NSView {
         return marker
     }
 
-    private static func makePrimary(spec: TerminalRow.Spec) -> NSTextField {
+    private static func makePrimary(spec: TerminalRow.Spec, wraps: Bool) -> NSTextField {
         let color = spec.strikethrough ? Applied.Capture.outputStrikethroughColor : primaryColor(for: spec.style)
         let primary = NSTextField(labelWithString: spec.primary)
         primary.font = Applied.Capture.outputFont
         primary.textColor = color
-        primary.lineBreakMode = .byTruncatingTail
-        primary.maximumNumberOfLines = 1
+        primary.lineBreakMode = wraps ? .byWordWrapping : .byTruncatingTail
+        primary.maximumNumberOfLines = wraps ? 0 : 1
+        primary.cell?.wraps = wraps
+        primary.cell?.isScrollable = !wraps
         primary.translatesAutoresizingMaskIntoConstraints = false
         let needsAttributed = spec.strikethrough || (spec.highlight?.isEmpty == false)
         if needsAttributed {
@@ -94,6 +126,11 @@ final class TerminalRowView: NSView {
             if spec.strikethrough {
                 attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
                 attrs[.strikethroughColor] = color
+            }
+            if wraps {
+                let paragraph = NSMutableParagraphStyle()
+                paragraph.lineBreakMode = .byWordWrapping
+                attrs[.paragraphStyle] = paragraph
             }
             let attributed = NSMutableAttributedString(string: spec.primary, attributes: attrs)
             if let needle = spec.highlight, !needle.isEmpty {
