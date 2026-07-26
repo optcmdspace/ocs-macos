@@ -210,7 +210,7 @@ final class TerminalRowView: NSView {
         case .normal:           return Applied.Capture.outputTextColor
         case .selected:         return Applied.Capture.terminalSelectedColor
         case .muted:            return Applied.Capture.outputEmptyColor
-        case .aged:             return Applied.Capture.outputAgedColor
+        case .soft:             return Applied.Capture.outputSoftColor
         case .faint:            return Applied.Capture.outputFaintColor
         case .command:          return Applied.Capture.commandColorMuted
         case .commandSelected:  return Applied.Capture.commandColor

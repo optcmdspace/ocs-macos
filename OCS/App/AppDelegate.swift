@@ -24,10 +24,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let controller = CapturePanelController(
             dispatchCapture: composition.dispatchCapture,
             dispatchEntries: composition.dispatchEntries,
+            dispatchLatest: composition.dispatchLatest,
             dispatchMove: composition.dispatchMove,
             dispatchEntryStats: composition.dispatchEntryStats,
             dispatchTagSuggestions: composition.dispatchTagSuggestions,
-            dispatchSetEntryTags: composition.dispatchSetEntryTags
+            dispatchSetEntryTags: composition.dispatchSetEntryTags,
+            dispatchSchedule: composition.dispatchSchedule
         )
         captureController = controller
 

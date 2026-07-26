@@ -16,7 +16,8 @@ nonisolated final class CaptureEntryHandler: Sendable {
         let interval = Signposts.signposter.beginInterval("handler-capture")
         defer { Signposts.signposter.endInterval("handler-capture", interval) }
         let parsed = HashtagParser.parse(cmd.rawText)
-        guard let text = EntryText(parsed.body) else {
+        let dated = DueDateParser.parse(parsed.body, now: cmd.now)
+        guard let text = EntryText(dated.body) else {
             throw CommandError.validationFailed("entry text empty after trimming")
         }
         let known = try await tagIdLookup.activeIds(forNames: parsed.tags)
@@ -45,6 +46,15 @@ nonisolated final class CaptureEntryHandler: Sendable {
             deviceId: cmd.deviceId,
             createdAt: cmd.now
         ))
+        if let dueAt = dated.dueAt {
+            events.append(EntryScheduled(
+                id: ids.next(),
+                entryId: entryId,
+                dueAt: dueAt,
+                deviceId: cmd.deviceId,
+                createdAt: cmd.now
+            ))
+        }
         for name in parsed.tags {
             guard let tagId = resolved[name] else { continue }
             events.append(EntryTagged(

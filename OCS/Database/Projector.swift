@@ -13,11 +13,24 @@ nonisolated final class Projector: Sendable {
             try applyEntryTagged(e, in: db)
         case let e as EntryUntagged:
             try applyEntryUntagged(e, in: db)
+        case let e as EntryScheduled:
+            try applyEntryScheduled(e, in: db)
         case let e as TagCreated:
             try applyTagCreated(e, in: db)
         default:
             preconditionFailure("Projector: unknown event \(type(of: event))")
         }
+    }
+
+    private func applyEntryScheduled(_ event: EntryScheduled, in db: GRDB.Database) throws {
+        try db.execute(
+            sql: Queries.projectEntryScheduled,
+            arguments: [
+                event.dueAt?.unixMillis,
+                event.createdAt.unixMillis,
+                event.entryId.uuidString,
+            ]
+        )
     }
 
     private func applyEntryCaptured(_ event: EntryCaptured, in db: GRDB.Database) throws {

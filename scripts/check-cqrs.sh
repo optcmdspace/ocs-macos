@@ -62,12 +62,14 @@ fi
 #-------------------------------------------------------------------------------
 # G6: INSERT INTO event tables only inside EventStoreGRDB.swift, or in named
 #     query files at queries/insert_*_event_*.sql which EventStoreGRDB loads.
+#     Migrations under migrations/*.sql are exempt: they own schema DDL and may
+#     copy rows when a CHECK-bearing table is rebuilt in place.
 #-------------------------------------------------------------------------------
 if [ -d "$SRC" ]; then
   matches="$(grep -RnE --include='*.swift' --include='*.sql' \
             'INSERT[[:space:]]+INTO[[:space:]]+(entry_events|tag_events)' \
             "$SRC" 2>/dev/null \
-            | grep -vE '/EventStoreGRDB\.swift:|/queries/insert_(entry|tag)_event_[a-z0-9_]+\.sql:' \
+            | grep -vE '/EventStoreGRDB\.swift:|/queries/insert_(entry|tag)_event_[a-z0-9_]+\.sql:|/migrations/[0-9]+_[a-z0-9_]+\.sql:' \
             || true)"
   if [ -n "$matches" ]; then
     say "G6: INSERT INTO event tables outside EventStoreGRDB.swift / queries/insert_*_event_*.sql:"
@@ -78,12 +80,14 @@ fi
 #-------------------------------------------------------------------------------
 # G7: INSERT INTO projection tables only inside Projector.swift, or in named
 #     query files at queries/project_*.sql which Projector loads.
+#     Migrations under migrations/*.sql are exempt: they own schema DDL and may
+#     copy rows when a projection table is rebuilt in place.
 #-------------------------------------------------------------------------------
 if [ -d "$SRC" ]; then
   matches="$(grep -RnE --include='*.swift' --include='*.sql' \
             'INSERT[[:space:]]+INTO[[:space:]]+(entries|tags|entry_tags)' \
             "$SRC" 2>/dev/null \
-            | grep -vE '/Projector\.swift:|/queries/project_[a-z0-9_]+\.sql:' \
+            | grep -vE '/Projector\.swift:|/queries/project_[a-z0-9_]+\.sql:|/migrations/[0-9]+_[a-z0-9_]+\.sql:' \
             || true)"
   if [ -n "$matches" ]; then
     say "G7: INSERT INTO projection tables outside Projector.swift / queries/project_*.sql:"

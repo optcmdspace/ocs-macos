@@ -8,6 +8,7 @@ enum CaptureIntent: Sendable {
     case dismiss
     case commit(keepOpen: Bool)
     case navigate(CaptureNavDirection)
+    case disclose(expand: Bool)
     case autocompleteSuggestion
     case deleteSelected
     case consume
@@ -34,6 +35,10 @@ enum CaptureKeyRouter {
         case #selector(NSResponder.scrollPageUp(_:)),
              #selector(NSResponder.pageUp(_:)):
             return .navigate(.pageUp)
+        case #selector(NSResponder.moveRight(_:)):
+            return .disclose(expand: true)
+        case #selector(NSResponder.moveLeft(_:)):
+            return .disclose(expand: false)
         case #selector(NSResponder.insertTab(_:)):
             return .autocompleteSuggestion
         case #selector(NSResponder.insertBacktab(_:)):

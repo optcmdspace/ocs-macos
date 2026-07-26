@@ -5,4 +5,5 @@ nonisolated struct EntryStats: Sendable, Equatable {
     let yesterdayCount: Int
     let activeCount: Int
     let staleActiveCount: Int
+    let overdueCount: Int
 }

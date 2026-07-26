@@ -24,6 +24,7 @@ enum Applied {
         static let promptColorMuted = Theme.Color.foregroundMuted
         static let textColor = Theme.Color.foreground
         static let inputTagColor = Theme.Color.accent
+        static let inputDueColor = Theme.Color.date
         static let commandColor = Theme.Color.command
         static let commandColorMuted = Theme.Color.commandMuted
         static let matchHighlightForeground = Theme.Color.accent
@@ -34,7 +35,7 @@ enum Applied {
         static let borderColor = Theme.Color.foregroundFaint
 
         static let outputTextColor = Theme.Color.foreground
-        static let outputAgedColor = Theme.Color.foregroundMuted
+        static let outputSoftColor = Theme.Color.foregroundSoft
         static let outputFaintColor = Theme.Color.foregroundSubtle
         static let outputTimestampColor = Theme.Color.foregroundSubtle
         static let outputTimestampSelectedColor = Theme.Color.foregroundMuted

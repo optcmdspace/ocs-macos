@@ -9,7 +9,13 @@ nonisolated final class ListRecentEntriesHandler: Sendable {
 
     func handle(_ query: ListRecentEntriesQuery) async throws -> [EntryListItem] {
         do {
-            return try await store.recentEntries(limit: query.limit, scope: query.scope, before: query.before)
+            return try await store.recentEntries(
+                limit: query.limit,
+                scope: query.scope,
+                before: query.before,
+                includeOverdue: query.includeOverdue,
+                overdueBeforeMillis: query.overdueBeforeMillis
+            )
         } catch {
             throw QueryError.storage(underlying: error)
         }

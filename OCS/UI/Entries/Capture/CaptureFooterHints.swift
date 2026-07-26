@@ -16,16 +16,26 @@ enum CaptureFooterHints {
         case .tagSuggestions:
             return [("↑↓", "to navigate"), ("tab", "to complete"), ("⏎", "to submit")]
         case .entries(let e):
-            if e.list.isEmpty {
+            guard let selected = e.list.selected else {
                 return [("↑", "to go back")]
             }
-            let enterLabel = e.list.selected?.bin == .done ? "to undo done" : "to mark done"
-            return [("↑↓", "to navigate"), ("⏎", enterLabel), ("⌫", "to delete"), ("t", "to tag")]
+            switch selected {
+            case .collapsedOverdue(let count):
+                return [("↑↓", "to navigate"), ("→", "show \(count) earlier")]
+            case .entry(let item):
+                let enterLabel = item.bin == .done ? "to undo done" : "to mark done"
+                var hints: [Hint] = [("↑↓", "to navigate"), ("⏎", enterLabel), ("d", "to schedule"), ("t", "to tag")]
+                if case .none = e.filter, let due = item.dueAt, DueBucket.classify(due, now: Date()) == .overdue {
+                    hints.append(("←", "hide earlier"))
+                }
+                return hints
+            }
         case .findResults(let e):
             if e.list.isEmpty {
+                if case .due = e.filter { return [("esc", "to dismiss")] }
                 return [("type", "to refine"), ("⌫", "to edit")]
             }
-            let enterLabel = e.list.selected?.bin == .done ? "to undo done" : "to mark done"
+            let enterLabel = e.list.selected?.entry?.bin == .done ? "to undo done" : "to mark done"
             return [("↑↓", "to navigate"), ("⏎", enterLabel)]
         }
     }

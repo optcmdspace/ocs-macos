@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-nonisolated final class EntryReadsGRDB: ListRecentEntriesStore, GetEntryStore, GetEntryStatsStore, FindEntriesStore {
+nonisolated final class EntryReadsGRDB: ListRecentEntriesStore, GetEntryStore, GetEntryStatsStore, FindEntriesStore, ListDueEntriesStore, ListLatestEntriesStore {
     private let database: Database
 
     init(database: Database) {
@@ -11,28 +11,34 @@ nonisolated final class EntryReadsGRDB: ListRecentEntriesStore, GetEntryStore, G
     func recentEntries(
         limit: Int,
         scope: ListRecentEntriesQuery.Scope,
-        before: ListRecentEntriesQuery.Cursor?
+        before: ListRecentEntriesQuery.Cursor?,
+        includeOverdue: Bool,
+        overdueBeforeMillis: Int64
     ) async throws -> [EntryListItem] {
         try await database.queue.read { db in
             let includeDone: Int = scope == .all ? 1 : 0
+            let includeOverdueFlag: Int = includeOverdue ? 1 : 0
             let rows: [Row]
             if let before {
                 rows = try Row.fetchAll(
                     db,
                     sql: Queries.selectEntriesRecentBefore,
                     arguments: [
-                        includeDone,
-                        before.createdAtMillis,
-                        before.createdAtMillis,
-                        before.id.uuidString,
-                        limit,
+                        "includeDone": includeDone,
+                        "includeOverdue": includeOverdueFlag,
+                        "overdueBefore": overdueBeforeMillis,
+                        "doneRank": before.doneRank,
+                        "effectiveDue": before.effectiveDueMillis,
+                        "createdAt": before.createdAtMillis,
+                        "id": before.id.uuidString,
+                        "limit": limit,
                     ]
                 )
             } else {
                 rows = try Row.fetchAll(
                     db,
                     sql: Queries.selectEntriesRecent,
-                    arguments: [includeDone, limit]
+                    arguments: [includeDone, includeOverdueFlag, overdueBeforeMillis, limit]
                 )
             }
             return rows.compactMap(Self.mapRow)
@@ -89,6 +95,28 @@ nonisolated final class EntryReadsGRDB: ListRecentEntriesStore, GetEntryStore, G
         }
     }
 
+    func dueEntries(limit: Int) async throws -> [EntryListItem] {
+        try await database.queue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: Queries.selectEntriesDue,
+                arguments: [limit]
+            )
+            return rows.compactMap(Self.mapRow)
+        }
+    }
+
+    func latestEntries(limit: Int) async throws -> [EntryListItem] {
+        try await database.queue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: Queries.selectEntriesLatest,
+                arguments: [limit]
+            )
+            return rows.compactMap(Self.mapRow)
+        }
+    }
+
     func entry(id: UUID) async throws -> EntryListItem? {
         try await database.queue.read { db in
             let row = try Row.fetchOne(
@@ -116,17 +144,19 @@ nonisolated final class EntryReadsGRDB: ListRecentEntriesStore, GetEntryStore, G
                 ]
             )
             guard let row else {
-                return EntryStats(todayCount: 0, yesterdayCount: 0, activeCount: 0, staleActiveCount: 0)
+                return EntryStats(todayCount: 0, yesterdayCount: 0, activeCount: 0, staleActiveCount: 0, overdueCount: 0)
             }
             let today: Int64 = row["today_count"] ?? 0
             let yesterday: Int64 = row["yesterday_count"] ?? 0
             let active: Int64 = row["active_count"] ?? 0
             let staleActive: Int64 = row["stale_active_count"] ?? 0
+            let overdue: Int64 = row["overdue_count"] ?? 0
             return EntryStats(
                 todayCount: Int(today),
                 yesterdayCount: Int(yesterday),
                 activeCount: Int(active),
-                staleActiveCount: Int(staleActive)
+                staleActiveCount: Int(staleActive),
+                overdueCount: Int(overdue)
             )
         }
     }
@@ -150,11 +180,14 @@ nonisolated final class EntryReadsGRDB: ListRecentEntriesStore, GetEntryStore, G
         else { return nil }
         let tagsCsv: String? = row["tags"]
         let tags: [String] = tagsCsv.map { $0.split(separator: ",").map(String.init) } ?? []
+        let dueAtMillis: Int64? = row["due_at"]
+        let dueAt = dueAtMillis.map { Date(timeIntervalSince1970: TimeInterval($0) / 1000) }
         return EntryListItem(
             id: id,
             text: text,
             bin: bin,
             createdAt: Date(timeIntervalSince1970: TimeInterval(createdAtMillis) / 1000),
+            dueAt: dueAt,
             tags: tags
         )
     }

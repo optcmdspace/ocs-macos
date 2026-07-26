@@ -1,4 +1,4 @@
-SELECT e.id, e.text, e.bin, e.created_at,
+SELECT e.id, e.text, e.bin, e.created_at, e.due_at,
        (SELECT GROUP_CONCAT(name, ',') FROM (
           SELECT t.name
             FROM entry_tags et

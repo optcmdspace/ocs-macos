@@ -8,5 +8,6 @@ SELECT e.id, e.text, e.bin, e.created_at, e.due_at,
            ORDER BY t.name
        )) AS tags
   FROM entries e
- WHERE e.id = :id
- LIMIT 1;
+ WHERE e.bin NOT IN ('done', 'trash')
+ ORDER BY e.created_at DESC, e.id DESC
+ LIMIT ?;

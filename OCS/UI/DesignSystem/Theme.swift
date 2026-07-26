@@ -6,16 +6,17 @@ enum Theme {
         static let accent = NSColor(red: 0x17 / 255.0, green: 0xb8 / 255.0, blue: 0xb0 / 255.0, alpha: 1.0)
         static let accentMuted = NSColor(red: 0x17 / 255.0, green: 0xb8 / 255.0, blue: 0xb0 / 255.0, alpha: 0.5)
         static let accentDim = NSColor(red: 0x17 / 255.0, green: 0xb8 / 255.0, blue: 0xb0 / 255.0, alpha: 0.18)
-        // Warm amber. Pulled from the same palette family as TagPalette hue 0.10 so commands
-        // and tags read as siblings — accent (teal) for data, command (amber) for verbs.
+
         static let command = NSColor(hue: 0.10, saturation: 0.55, brightness: 0.95, alpha: 1.0)
         static let commandMuted = NSColor(hue: 0.10, saturation: 0.55, brightness: 0.95, alpha: 0.45)
 
+        static let date = NSColor(hue: 0.62, saturation: 0.45, brightness: 0.98, alpha: 1.0)
+
         static let foreground = NSColor(white: 1.0, alpha: 0.92)
+        static let foregroundSoft = NSColor(white: 1.0, alpha: 0.62)
         static let foregroundMuted = NSColor(white: 1.0, alpha: 0.45)
         static let foregroundSubtle = NSColor(white: 1.0, alpha: 0.25)
         static let foregroundFaint = NSColor(white: 1.0, alpha: 0.10)
-
         static let foregroundDimSolid = NSColor(white: 0.45, alpha: 1.0)
 
         static let backgroundScrim = NSColor(white: 0.0, alpha: 0.55)

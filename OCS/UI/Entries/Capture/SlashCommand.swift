@@ -3,6 +3,7 @@ import Foundation
 nonisolated enum SlashCommand {
     case capture(String)
     case find(text: String?, tags: [TagName], scope: ListRecentEntriesQuery.Scope)
+    case dueAgenda
     case setSound(Bool)
 
     nonisolated struct Spec: Sendable, Equatable {
@@ -20,9 +21,8 @@ nonisolated enum SlashCommand {
     //   3. add a Verb entry below with its parser.
     // No other file in the codebase needs to grow.
 
-    // Range of the leading "/<verb>" token when it prefixes a known catalog command. Returns nil
-    // when the field doesn't start with a command — used for input-field highlighting and the
-    // cursor-tint switch.
+    // Range of the leading "/<verb>" token when it prefixes a known catalog command; nil otherwise.
+    // Drives input-field highlighting and the cursor-tint switch.
     nonisolated static func leadingCommandRange(in raw: String) -> NSRange? {
         let nsRaw = raw as NSString
         var start = 0
@@ -87,6 +87,11 @@ nonisolated enum SlashCommand {
             children: []
         ),
         Node(
+            label: "due",
+            description: "entries with a due date, grouped",
+            children: []
+        ),
+        Node(
             label: "set",
             description: "change a setting",
             children: [
@@ -128,8 +133,13 @@ nonisolated enum SlashCommand {
 
         nonisolated static let all: [Verb] = [
             Verb(token: "/find", parse: parseFind),
+            Verb(token: "/due", parse: parseDue),
             Verb(token: "/set", parse: parseSet),
         ]
+    }
+
+    @Sendable nonisolated private static func parseDue(_ args: [String]) -> SlashCommand? {
+        .dueAgenda
     }
 
     @Sendable nonisolated private static func parseFind(_ args: [String]) -> SlashCommand? {

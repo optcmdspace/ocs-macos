@@ -15,6 +15,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     private let history: CaptureHistoryCoordinator
     private let moveDispatcher: EntryMoveDispatcher
     private let dispatchCapture: @Sendable (_ rawText: String) async throws -> EntryListItem
+    private let dispatchSchedule: @Sendable (_ entryId: UUID, _ dueAt: Date?) async throws -> Void
     private var tagAutocomplete: TagAutocompleteCoordinator!
     private var tagEditCoordinator: TagEditCoordinator!
 
@@ -27,6 +28,8 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     private var singlePreview: EntryListItem?
     private var sessionItems: [EntryListItem] = []
     private var previewLoading: Bool = false
+    private var overdueExpanded: Bool = false
+    private var schedulingEntryId: UUID?
     private var pendingGlance: Bool = false
     private var savedToastTask: Task<Void, Never>?
     private var recentSave: RecentSave?
@@ -38,10 +41,12 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     init(
         dispatchCapture: @escaping @Sendable (_ rawText: String) async throws -> EntryListItem,
         dispatchEntries: @escaping @Sendable (_ limit: Int, _ scope: ListRecentEntriesQuery.Scope, _ filter: EntriesFilter, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem],
+        dispatchLatest: @escaping @Sendable (_ limit: Int) async throws -> [EntryListItem],
         dispatchMove: @escaping @Sendable (_ entryId: UUID, _ toBin: Bin) async throws -> Void,
         dispatchEntryStats: @escaping @Sendable (_ todayStartMillis: Int64, _ yesterdayStartMillis: Int64, _ staleCutoffMillis: Int64) async throws -> EntryStats,
         dispatchTagSuggestions: @escaping DispatchTagSuggestions,
-        dispatchSetEntryTags: @escaping DispatchSetEntryTags
+        dispatchSetEntryTags: @escaping DispatchSetEntryTags,
+        dispatchSchedule: @escaping @Sendable (_ entryId: UUID, _ dueAt: Date?) async throws -> Void
     ) {
         let layout = CapturePanelLayout.build()
         self.layout = layout
@@ -53,10 +58,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             bottomGap: Applied.Capture.glanceBottomGap,
             visibleSeconds: Applied.Capture.glanceVisibleSeconds
         )
-        let unfiltered: @Sendable (Int, ListRecentEntriesQuery.Scope, ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem] = { limit, scope, before in
-            try await dispatchEntries(limit, scope, .none, before)
-        }
-        self.preview = PreviewLoader(dispatch: unfiltered)
+        self.preview = PreviewLoader(dispatch: dispatchLatest)
         self.stats = StatsLoader(dispatch: dispatchEntryStats)
         self.entries = EntriesLoader(dispatch: dispatchEntries, pageSize: Self.pageSize)
         self.history = CaptureHistoryCoordinator(
@@ -64,6 +66,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         )
         self.moveDispatcher = EntryMoveDispatcher(dispatch: dispatchMove)
         self.dispatchCapture = dispatchCapture
+        self.dispatchSchedule = dispatchSchedule
 
         super.init()
 
@@ -104,6 +107,14 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     }
 
     func controlTextDidChange(_ obj: Notification) {
+        // Scheduling: the field is a date input; tint by validity and skip capture/find.
+        if schedulingEntryId != nil {
+            let text = layout.field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let valid = !text.isEmpty && DueDateParser.parseDirective(text, now: Date()) != nil
+            layout.field.highlightAsDate(valid: valid)
+            updatePanelHeight()
+            return
+        }
         // Cancel the baseline fetch so a capture write doesn't race with the read.
         preview.cancel()
         previewLoading = false
@@ -221,9 +232,9 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
 
     private func refreshInputActive() {
         let active: Bool
-        // .entries (arrow-down list) takes the cursor over for navigation; .findResults keeps
-        // the field active so the user can keep refining the live query.
-        if case .entries = page { active = false } else { active = true }
+        // .entries hands the cursor to list navigation; .findResults and scheduling keep the field active.
+        if schedulingEntryId != nil { active = true }
+        else if case .entries = page { active = false } else { active = true }
         layout.prompt.setActive(active)
         layout.panel.setCursorActive(active)
         refreshCursorTint()
@@ -242,6 +253,17 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             let count = state.currentApplied.count
             layout.footer.setStat(count == 0 ? "no tags" : "\(count) tag\(count == 1 ? "" : "s")")
             layout.setTagPicker(TagPickerRenderer.attributedString(for: state))
+            return
+        }
+        if schedulingEntryId != nil {
+            layout.setTagPicker(nil)
+            if let message = recentRejection {
+                layout.footer.setStat(message, accent: true)
+                layout.footer.setHints([])
+            } else {
+                layout.footer.setStat("set a due date", accent: false)
+                layout.footer.setHints([("⏎", "set date"), ("esc", "cancel")])
+            }
             return
         }
         layout.setTagPicker(nil)
@@ -308,11 +330,14 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             _ = acceptTagSuggestion(pick, in: t)
             return
         }
-        if case .entries(let e) = page, let item = e.list.selected {
-            toggleDone(item: item, in: e)
+        if case .entries(let e) = page, let selected = e.list.selected {
+            switch selected {
+            case .entry(let item): toggleDone(item: item, in: e)
+            case .collapsedOverdue: _ = discloseSelected(expand: true)
+            }
             return
         }
-        if case .findResults(let e) = page, let item = e.list.selected {
+        if case .findResults(let e) = page, case .entry(let item)? = e.list.selected {
             toggleFindDone(item: item, in: e)
             return
         }
@@ -340,6 +365,10 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             }
             layout.field.refreshTokenHighlight()
             liveFind.kickoff(raw: prefilled)
+        case .dueAgenda:
+            layout.field.stringValue = ""
+            layout.field.refreshTokenHighlight()
+            beginDueAgenda()
         case .setSound(let on):
             CaptureSoundPreference.setEnabled(on)
             layout.field.stringValue = ""
@@ -446,7 +475,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     }
 
     private func handleBackspaceInEntries() -> Bool {
-        guard case .entries(let e) = page, let item = e.list.selected else {
+        guard case .entries(let e) = page, case .entry(let item)? = e.list.selected else {
             return false
         }
         trashSelected(item: item, in: e)
@@ -454,7 +483,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     }
 
     private func moveAndUpdate(item: EntryListItem, to bin: Bin, in state: EntriesListPageState) {
-        let next = EntryListItem(id: item.id, text: item.text, bin: bin, createdAt: item.createdAt, tags: item.tags)
+        let next = EntryListItem(id: item.id, text: item.text, bin: bin, createdAt: item.createdAt, dueAt: item.dueAt, tags: item.tags)
         applyPage(.entries(state.replacingSelected(with: next)))
         if bin == .done || bin == .trash { dropFromPreview(id: item.id) }
         moveDispatcher.send(entryId: item.id, toBin: bin)
@@ -473,7 +502,12 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         if singlePreview?.id == id { singlePreview = nil }
     }
 
-    private func beginEntriesLoad(scope: ListRecentEntriesQuery.Scope, filter: EntriesFilter = .none) {
+    private func beginEntriesLoad(scope: ListRecentEntriesQuery.Scope, resetOverdue: Bool = true) {
+        // A fresh open starts collapsed; a disclose reload keeps whatever the user just toggled.
+        if resetOverdue { overdueExpanded = false }
+        let filter: EntriesFilter = overdueExpanded
+            ? .none
+            : .recentCollapsed(overdueBeforeMillis: Self.startOfTodayMillis())
         let initial = EntriesListPageState.empty(windowSize: windowSize, scope: scope, filter: filter).startingLoad()
         applyPage(.entries(initial))
         updatePanelHeight()
@@ -492,9 +526,119 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
                 guard let self, case .entries(let e) = self.page else { return }
                 switch outcome {
                 case .loaded(let items):
-                    self.applyPage(.entries(e.appending(items, requestedLimit: Self.pageSize)))
+                    self.applyPage(.entries(self.withOverdueSummary(e.appending(items, requestedLimit: Self.pageSize))))
                 case .failed:
                     self.applyPage(.entries(e.failedLoad()))
+                }
+                self.updatePanelHeight()
+            }
+        )
+    }
+
+    // Right arrow expands the selected row if it can; left collapses its group; else false so the arrows
+    // stay cursor keys. Not overdue-specific.
+    private func discloseSelected(expand: Bool) -> Bool {
+        guard case .entries(let e) = page, let selected = e.list.selected else { return false }
+        if expand {
+            guard selected.isExpandable else { return false }
+            overdueExpanded = true
+        } else {
+            // Collapse only when the cursor is inside the group (an overdue row).
+            guard overdueExpanded,
+                  let due = selected.entry?.dueAt,
+                  DueBucket.classify(due, now: Date()) == .overdue else { return false }
+            overdueExpanded = false
+        }
+        beginEntriesLoad(scope: e.scope, resetOverdue: false)
+        return true
+    }
+
+    private func enterScheduling(for item: EntryListItem) {
+        schedulingEntryId = item.id
+        layout.field.stringValue = ""
+        layout.field.setPlaceholder("type a date (tomorrow, jul 12, next friday), or blank to clear")
+        // Take focus explicitly, drop the caret at the start, and switch the block cursor back on.
+        layout.panel.makeFirstResponder(layout.field)
+        layout.field.currentEditor()?.selectedRange = NSRange(location: 0, length: 0)
+        refreshInputActive()
+        refreshFooter()
+        updatePanelHeight()
+    }
+
+    private func commitScheduling() {
+        guard let entryId = schedulingEntryId, case .entries(let e) = page else { return }
+        let text = layout.field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let dueAt: Date?
+        if text.isEmpty {
+            dueAt = nil
+        } else if let parsed = DueDateParser.parseDirective(text, now: Date()) {
+            dueAt = parsed
+        } else {
+            flashRejection("not a date. try today, tomorrow, thursday, jul 12, next monday...")
+            return
+        }
+        let scope = e.scope
+        exitScheduling()
+        let dispatch = self.dispatchSchedule
+        // Reload after the write commits so the entry re-sorts into its new due position.
+        Task { [weak self] in
+            do {
+                try await dispatch(entryId, dueAt)
+                await MainActor.run { self?.beginEntriesLoad(scope: scope) }
+            } catch {
+                NSLog("OCS: schedule failed: %@", String(describing: error))
+            }
+        }
+    }
+
+    private func cancelScheduling() {
+        exitScheduling()
+    }
+
+    private func exitScheduling() {
+        schedulingEntryId = nil
+        layout.field.stringValue = ""
+        layout.field.setPlaceholder(CaptureField.defaultPlaceholder)
+        layout.field.refreshTokenHighlight()
+        refreshInputActive()
+        refreshFooter()
+        updatePanelHeight()
+    }
+
+    private static func startOfTodayMillis() -> Int64 {
+        Calendar.current.startOfDay(for: Date()).unixMillis
+    }
+
+    // Prepends the collapsed past-due summary row when the list is in its collapsed state.
+    private func withOverdueSummary(_ state: EntriesListPageState) -> EntriesListPageState {
+        guard !overdueExpanded else { return state }
+        return state.withLeadingCollapsedOverdue(count: stats.stats?.overdueCount ?? 0)
+    }
+
+    // Reuses the findResults page for its navigation/actions; loaded as one bounded, exhausted page so
+    // the due order isn't disturbed by created-at pagination.
+    private func beginDueAgenda() {
+        let initial = EntriesListPageState.empty(windowSize: windowSize, scope: .active, filter: .due).startingLoad()
+        applyPage(.findResults(initial))
+        updatePanelHeight()
+
+        entries.loadFirst(
+            scope: .active,
+            filter: .due,
+            onSpinnerReveal: { [weak self] in
+                guard let self else { return }
+                if case .findResults(let e) = self.page, e.isLoadingMore, e.list.isEmpty, !e.loadingVisible {
+                    self.applyPage(.findResults(e.revealingLoad()))
+                    self.updatePanelHeight()
+                }
+            },
+            onResult: { [weak self] outcome in
+                guard let self, case .findResults(let e) = self.page else { return }
+                switch outcome {
+                case .loaded(let items):
+                    self.applyPage(.findResults(e.appending(items, requestedLimit: items.count + 1)))
+                case .failed:
+                    self.applyPage(.findResults(e.failedLoad()))
                 }
                 self.updatePanelHeight()
             }
@@ -518,7 +662,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
 
     private func toggleFindDone(item: EntryListItem, in state: EntriesListPageState) {
         let target: Bin = item.bin == .done ? .inbox : .done
-        let next = EntryListItem(id: item.id, text: item.text, bin: target, createdAt: item.createdAt, tags: item.tags)
+        let next = EntryListItem(id: item.id, text: item.text, bin: target, createdAt: item.createdAt, dueAt: item.dueAt, tags: item.tags)
         applyPage(.findResults(state.replacingSelected(with: next)))
         if target == .done || target == .trash { dropFromPreview(id: item.id) }
         moveDispatcher.send(entryId: item.id, toBin: target)
@@ -562,6 +706,13 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     }
 
     private func perform(_ intent: CaptureIntent) -> Bool {
+        if schedulingEntryId != nil {
+            switch intent {
+            case .commit: commitScheduling(); return true
+            case .dismiss: cancelScheduling(); return true
+            default: return false // arrows and the rest are normal text editing in the date field
+            }
+        }
         switch intent {
         case .dismiss:
             dismiss()
@@ -571,6 +722,8 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             return true
         case .navigate(let direction):
             return navigate(direction)
+        case .disclose(let expand):
+            return discloseSelected(expand: expand)
         case .autocompleteSuggestion:
             return autocompleteSuggestion()
         case .deleteSelected:
@@ -630,7 +783,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             if next.shouldLoadMore { loadMoreEntries(from: next) }
             return true
         case .findResults(let e):
-            // The field stays active here, so ↑ at the top simply clamps; we don't exit the page.
+            // The field stays active here, so up-arrow at the top simply clamps; we don't exit the page.
             guard !e.list.isEmpty else { return false }
             let next: EntriesListPageState
             switch direction {
@@ -648,13 +801,14 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
 
     private func applyTagsLocally(entryId: UUID, applied: Set<String>) {
         guard case .entries(let e) = page else { return }
-        guard let idx = e.list.items.firstIndex(where: { $0.id == entryId }) else { return }
-        let item = e.list.items[idx]
+        guard let idx = e.list.items.firstIndex(where: { $0.entry?.id == entryId }) else { return }
+        guard let item = e.list.items[idx].entry else { return }
         let newItem = EntryListItem(
             id: item.id,
             text: item.text,
             bin: item.bin,
             createdAt: item.createdAt,
+            dueAt: item.dueAt,
             tags: applied.sorted()
         )
         applyPage(.entries(e.replacing(at: idx, with: newItem)))
@@ -665,14 +819,22 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
             if event.modifierFlags.contains(.command) { return event }
+            // Scheduling: let every key reach the field; Enter/Esc route through perform().
+            if self.schedulingEntryId != nil { return event }
             if self.tagEditCoordinator.isActive {
                 return self.tagEditCoordinator.handleKey(event) ? nil : event
             }
-            // 't' on a selected row opens tag edit. Intercept before the field eats it as text.
+            // 't'/'d' open tag/date edit on the selected row; intercept before the field eats them.
             if event.charactersIgnoringModifiers == "t",
                case .entries(let e) = self.page,
-               let item = e.list.selected {
+               case .entry(let item)? = e.list.selected {
                 self.tagEditCoordinator.enter(for: item)
+                return nil
+            }
+            if event.charactersIgnoringModifiers == "d",
+               case .entries(let e) = self.page,
+               case .entry(let item)? = e.list.selected {
+                self.enterScheduling(for: item)
                 return nil
             }
             return event

@@ -4,7 +4,9 @@ import Foundation
 nonisolated final class Composition: Sendable {
     let dispatchCapture: @Sendable (_ rawText: String) async throws -> EntryListItem
     let dispatchEntries: @Sendable (_ limit: Int, _ scope: ListRecentEntriesQuery.Scope, _ filter: EntriesFilter, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem]
+    let dispatchLatest: @Sendable (_ limit: Int) async throws -> [EntryListItem]
     let dispatchMove: @Sendable (_ entryId: UUID, _ toBin: Bin) async throws -> Void
+    let dispatchSchedule: @Sendable (_ entryId: UUID, _ dueAt: Date?) async throws -> Void
     let dispatchEntryStats: @Sendable (_ todayStartMillis: Int64, _ yesterdayStartMillis: Int64, _ staleCutoffMillis: Int64) async throws -> EntryStats
     let dispatchTagSuggestions: DispatchTagSuggestions
     let dispatchSetEntryTags: DispatchSetEntryTags
@@ -24,10 +26,13 @@ nonisolated final class Composition: Sendable {
     private let tagAutocompleteHandler: TagAutocompleteHandler
     private let captureHandler: CaptureEntryHandler
     private let moveHandler: MoveEntryHandler
+    private let scheduleHandler: ScheduleEntryHandler
     private let setEntryTagsHandler: SetEntryTagsHandler
     private let entryReads: EntryReadsGRDB
     private let listRecentHandler: ListRecentEntriesHandler
     private let findEntriesHandler: FindEntriesHandler
+    private let listDueEntriesHandler: ListDueEntriesHandler
+    private let listLatestEntriesHandler: ListLatestEntriesHandler
     private let getEntryHandler: GetEntryHandler
     private let getEntryStatsHandler: GetEntryStatsHandler
 
@@ -53,6 +58,7 @@ nonisolated final class Composition: Sendable {
             tagIdLookup: tagsPublishedReads
         )
         let moveHandler = MoveEntryHandler(eventStore: eventStore, ids: ids)
+        let scheduleHandler = ScheduleEntryHandler(eventStore: eventStore, ids: ids)
         let setEntryTagsHandler = SetEntryTagsHandler(
             eventStore: eventStore,
             ids: ids,
@@ -61,6 +67,8 @@ nonisolated final class Composition: Sendable {
         let entryReads = EntryReadsGRDB(database: database)
         let listRecentHandler = ListRecentEntriesHandler(store: entryReads)
         let findEntriesHandler = FindEntriesHandler(store: entryReads)
+        let listDueEntriesHandler = ListDueEntriesHandler(store: entryReads)
+        let listLatestEntriesHandler = ListLatestEntriesHandler(store: entryReads)
         let getEntryHandler = GetEntryHandler(store: entryReads)
         let getEntryStatsHandler = GetEntryStatsHandler(store: entryReads)
 
@@ -75,10 +83,13 @@ nonisolated final class Composition: Sendable {
         self.tagAutocompleteHandler = tagAutocompleteHandler
         self.captureHandler = captureHandler
         self.moveHandler = moveHandler
+        self.scheduleHandler = scheduleHandler
         self.setEntryTagsHandler = setEntryTagsHandler
         self.entryReads = entryReads
         self.listRecentHandler = listRecentHandler
         self.findEntriesHandler = findEntriesHandler
+        self.listDueEntriesHandler = listDueEntriesHandler
+        self.listLatestEntriesHandler = listLatestEntriesHandler
         self.getEntryHandler = getEntryHandler
         self.getEntryStatsHandler = getEntryStatsHandler
         self.dispatchCapture = { [captureHandler, getEntryHandler, clock, deviceId] rawText in
@@ -90,15 +101,30 @@ nonisolated final class Composition: Sendable {
             let entryId = try await captureHandler.handle(cmd)
             return try await getEntryHandler.handle(GetEntryQuery(id: entryId))
         }
-        self.dispatchEntries = { [listRecentHandler, findEntriesHandler] limit, scope, filter, before in
+        self.dispatchEntries = { [listRecentHandler, findEntriesHandler, listDueEntriesHandler] limit, scope, filter, before in
             switch filter {
             case .none:
                 return try await listRecentHandler.handle(
-                    ListRecentEntriesQuery(limit: limit, scope: scope, before: before)
+                    ListRecentEntriesQuery(limit: limit, scope: scope, before: before, includeOverdue: true)
                 )
+            case .recentCollapsed(let overdueBefore):
+                return try await listRecentHandler.handle(
+                    ListRecentEntriesQuery(
+                        limit: limit,
+                        scope: scope,
+                        before: before,
+                        includeOverdue: false,
+                        overdueBeforeMillis: overdueBefore
+                    )
+                )
+            case .due:
+                // The agenda is one bounded page ordered by due date; created-at pagination doesn't
+                // apply, so a paged (before != nil) request has nothing further to return.
+                guard before == nil else { return [] }
+                return try await listDueEntriesHandler.handle(ListDueEntriesQuery(limit: 200))
             case .find(let text, let tags):
-                // An empty /find filter (no text and no tags) is just a recent-entries listing —
-                // route it through the same handler as .none so the two paths can't drift.
+                // An empty /find filter is just a recent listing; route it through the same handler as
+                // .none so the two paths can't drift.
                 if (text?.isEmpty ?? true) && tags.isEmpty {
                     return try await listRecentHandler.handle(
                         ListRecentEntriesQuery(limit: limit, scope: scope, before: before)
@@ -109,6 +135,9 @@ nonisolated final class Composition: Sendable {
                 )
             }
         }
+        self.dispatchLatest = { [listLatestEntriesHandler] limit in
+            try await listLatestEntriesHandler.handle(ListLatestEntriesQuery(limit: limit))
+        }
         self.dispatchMove = { [moveHandler, clock, deviceId] entryId, toBin in
             let cmd = MoveEntryCommand(
                 entryId: entryId,
@@ -117,6 +146,15 @@ nonisolated final class Composition: Sendable {
                 now: clock.now()
             )
             try await moveHandler.handle(cmd)
+        }
+        self.dispatchSchedule = { [scheduleHandler, clock, deviceId] entryId, dueAt in
+            let cmd = ScheduleEntryCommand(
+                entryId: entryId,
+                dueAt: dueAt,
+                deviceId: deviceId,
+                now: clock.now()
+            )
+            try await scheduleHandler.handle(cmd)
         }
         self.dispatchEntryStats = { [getEntryStatsHandler] todayStartMillis, yesterdayStartMillis, staleCutoffMillis in
             try await getEntryStatsHandler.handle(

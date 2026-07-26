@@ -18,10 +18,19 @@ final class TerminalView: NSStackView {
     func setRows(_ specs: [TerminalRow.Spec]) {
         clearArranged()
         for spec in specs {
-            let row = TerminalRowView(spec: spec)
+            let row: NSView = spec.isDivider ? Self.makeDivider() : TerminalRowView(spec: spec)
             addArrangedSubview(row)
             row.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
         }
+    }
+
+    private static func makeDivider() -> NSView {
+        let line = NSView()
+        line.wantsLayer = true
+        line.layer?.backgroundColor = Applied.Capture.dividerColor.cgColor
+        line.translatesAutoresizingMaskIntoConstraints = false
+        line.heightAnchor.constraint(equalToConstant: Applied.Capture.dividerHeight).isActive = true
+        return line
     }
 
     func setLoading() {

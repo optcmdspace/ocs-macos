@@ -2,7 +2,7 @@ import Foundation
 
 @MainActor
 final class PreviewLoader {
-    typealias Dispatch = @Sendable (_ limit: Int, _ scope: ListRecentEntriesQuery.Scope, _ before: ListRecentEntriesQuery.Cursor?) async throws -> [EntryListItem]
+    typealias Dispatch = @Sendable (_ limit: Int) async throws -> [EntryListItem]
 
     private let dispatch: Dispatch
     private var task: Task<Void, Never>?
@@ -33,7 +33,7 @@ final class PreviewLoader {
             try? await Task.sleep(for: .milliseconds(80))
             if Task.isCancelled { return }
             do {
-                let items = try await dispatch(1, .active, nil)
+                let items = try await dispatch(1)
                 if Task.isCancelled { return }
                 self?.cached = items.first
                 onResult(items.first)

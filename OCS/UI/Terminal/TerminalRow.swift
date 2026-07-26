@@ -5,7 +5,7 @@ nonisolated enum TerminalRow {
         case normal
         case selected
         case muted
-        case aged
+        case soft
         case faint
         case command
         case commandSelected
@@ -21,6 +21,8 @@ nonisolated enum TerminalRow {
         let strikethrough: Bool
         // Case-insensitive substring of `primary` to chip; nil for no chip.
         let highlight: String?
+        // A horizontal rule between row groups; when true the other fields are ignored.
+        let isDivider: Bool
 
         nonisolated init(
             primary: String,
@@ -30,7 +32,8 @@ nonisolated enum TerminalRow {
             trailingMinWidth: CGFloat = 0,
             style: Style = .normal,
             strikethrough: Bool = false,
-            highlight: String? = nil
+            highlight: String? = nil,
+            isDivider: Bool = false
         ) {
             self.primary = primary
             self.secondary = secondary
@@ -40,11 +43,14 @@ nonisolated enum TerminalRow {
             self.style = style
             self.strikethrough = strikethrough
             self.highlight = highlight
+            self.isDivider = isDivider
         }
 
         nonisolated static func message(_ text: String) -> Self {
             .init(primary: text, style: .muted)
         }
+
+        nonisolated static let divider = Self(primary: "", isDivider: true)
 
         nonisolated func styled(_ newStyle: Style) -> Self {
             .init(
@@ -55,7 +61,8 @@ nonisolated enum TerminalRow {
                 trailingMinWidth: trailingMinWidth,
                 style: newStyle,
                 strikethrough: strikethrough,
-                highlight: highlight
+                highlight: highlight,
+                isDivider: isDivider
             )
         }
 

@@ -1,7 +1,7 @@
 import Foundation
 
 nonisolated struct EntriesListPageState: Sendable, Equatable {
-    let list: TerminalListState<EntryListItem>
+    let list: TerminalListState<EntryRow>
     let scope: ListRecentEntriesQuery.Scope
     let filter: EntriesFilter
     let nextCursor: ListRecentEntriesQuery.Cursor?
@@ -58,11 +58,14 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
     }
 
     func appending(_ more: [EntryListItem], requestedLimit: Int) -> EntriesListPageState {
-        let nextList = list.appending(more)
-        let lastSeen = more.last ?? list.items.last
+        let nextList = list.appending(more.map(EntryRow.entry))
+        // The keyset cursor tracks the last real entry; disclosure rows never paginate.
+        let lastSeen = more.last ?? list.items.compactMap(\.entry).last
         let newCursor: ListRecentEntriesQuery.Cursor? = lastSeen.map {
             .init(
-                createdAtMillis: Int64(($0.createdAt.timeIntervalSince1970 * 1000).rounded()),
+                doneRank: $0.bin == .done ? 1 : 0,
+                effectiveDueMillis: $0.dueAt?.unixMillis ?? Int64.max,
+                createdAtMillis: $0.createdAt.unixMillis,
                 id: $0.id
             )
         }
@@ -97,18 +100,27 @@ nonisolated struct EntriesListPageState: Sendable, Equatable {
     func pageUp() -> EntriesListPageState { with(list: list.pageUp()) }
 
     func replacingSelected(with item: EntryListItem) -> EntriesListPageState {
-        with(list: list.replacingSelected(with: item))
+        with(list: list.replacingSelected(with: .entry(item)))
     }
 
     func replacing(at index: Int, with item: EntryListItem) -> EntriesListPageState {
-        with(list: list.replacing(at: index, with: item))
+        with(list: list.replacing(at: index, with: .entry(item)))
     }
 
     func removingSelected() -> EntriesListPageState {
         with(list: list.removingSelected())
     }
 
-    private func with(list newList: TerminalListState<EntryListItem>) -> EntriesListPageState {
+    // Prepends the collapsed past-due summary as a selectable row, nudging the cursor so it stays on
+    // the same entry. Idempotent, so paginated appends don't add a second one.
+    func withLeadingCollapsedOverdue(count: Int) -> EntriesListPageState {
+        guard count > 0 else { return self }
+        if case .collapsedOverdue = list.items.first { return self }
+        let items = [EntryRow.collapsedOverdue(count: count)] + list.items
+        return with(list: TerminalListState(items: items, cursor: list.cursor + 1, windowSize: list.windowSize))
+    }
+
+    private func with(list newList: TerminalListState<EntryRow>) -> EntriesListPageState {
         EntriesListPageState(
             list: newList,
             scope: scope,

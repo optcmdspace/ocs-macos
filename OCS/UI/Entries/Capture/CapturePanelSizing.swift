@@ -6,7 +6,7 @@ extension CapturePanelLayout {
         let outputContribution = outputHeight > 0
             ? Applied.Capture.outputTopGap
                 + Applied.Capture.dividerHeight
-                + Applied.Capture.outputTopGap
+                + Applied.Capture.outputRowSpacing
                 + outputHeight
             : 0
         let tagPickerContribution = tagPickerVisible
@@ -62,9 +62,10 @@ extension CapturePanelLayout {
 
     func showDivider(_ visible: Bool) {
         divider.isHidden = !visible
-        let gap = visible ? Applied.Capture.outputTopGap : 0
-        dividerTopConstraint.constant = gap
-        resultsTopConstraint.constant = gap
+        // The field sits outputTopGap above the prompt divider; the first result sits outputRowSpacing
+        // below it, so that gap matches the spacing around the in-list "today" divider.
+        dividerTopConstraint.constant = visible ? Applied.Capture.outputTopGap : 0
+        resultsTopConstraint.constant = visible ? Applied.Capture.outputRowSpacing : 0
     }
 
     func clearResults() {

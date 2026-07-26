@@ -85,7 +85,9 @@ enum CaptureResultsRenderer {
             switch e.filter {
             case .find:
                 empty = "no captures match"
-            case .none:
+            case .due:
+                empty = "nothing scheduled"
+            case .none, .recentCollapsed:
                 empty = e.scope == .active ? "nothing on your mind" : "no captures yet"
             }
             return .rows([.message(empty)])
@@ -94,13 +96,50 @@ enum CaptureResultsRenderer {
         if e.list.hiddenAbove > 0 {
             rows.append(.message("↑ \(e.list.hiddenAbove) more"))
         }
-        let highlight: String? = {
-            if case .find(let text, _) = e.filter, let t = text, !t.isEmpty { return t }
-            return nil
-        }()
-        rows.append(contentsOf: e.list.renderedItems {
-            CaptureRows.entry($0, now: now, trailingMinWidth: trailingMinWidth, highlight: highlight)
-        })
+        // Iterated by hand (not renderedItems) so separators can be interleaved; selection applied here.
+        switch e.filter {
+        case .due:
+            var lastBucket: DueBucket?
+            for i in e.list.visibleRange {
+                guard let item = e.list.items[i].entry else { continue }
+                if let due = item.dueAt {
+                    let bucket = DueBucket.classify(due, now: now)
+                    if bucket != lastBucket {
+                        rows.append(.message(bucket.header))
+                        lastBucket = bucket
+                    }
+                }
+                let spec = CaptureRows.entry(item, now: now, trailingMinWidth: trailingMinWidth, style: CaptureRows.plainStyle(for: item))
+                rows.append(i == e.list.cursor ? spec.selectedStyle() : spec)
+            }
+        case .none, .recentCollapsed:
+            // The summary is a selectable row; the divider marks the end of the due-today-or-earlier group.
+            var previousWasTop: Bool?
+            for i in e.list.visibleRange {
+                let selected = i == e.list.cursor
+                switch e.list.items[i] {
+                case .collapsedOverdue(let count):
+                    // The trailing arrow marks the row expandable, in the due-stamp column.
+                    let spec = TerminalRow.Spec(primary: "\(count) earlier", trailing: "→", trailingMinWidth: trailingMinWidth, style: .muted)
+                    rows.append(selected ? spec.selectedStyle() : spec)
+                case .entry(let item):
+                    let top = CaptureRows.dueTodayOrEarlier(item, now: now)
+                    if previousWasTop == true, !top {
+                        rows.append(.divider)
+                    }
+                    previousWasTop = top
+                    let spec = CaptureRows.entry(item, now: now, trailingMinWidth: trailingMinWidth, style: CaptureRows.recentStyle(for: item, now: now))
+                    rows.append(selected ? spec.selectedStyle() : spec)
+                }
+            }
+        case .find(let text, _):
+            let highlight: String? = (text?.isEmpty == false) ? text : nil
+            for i in e.list.visibleRange {
+                guard let item = e.list.items[i].entry else { continue }
+                let spec = CaptureRows.entry(item, now: now, trailingMinWidth: trailingMinWidth, style: CaptureRows.plainStyle(for: item), highlight: highlight)
+                rows.append(i == e.list.cursor ? spec.selectedStyle() : spec)
+            }
+        }
         // Until exhausted, hiddenBelow is a lower bound; the count would jump as pages land.
         if e.exhausted {
             if e.list.hiddenBelow > 0 {

@@ -14,13 +14,7 @@ final class CaptureField: NSTextField {
         cell?.wraps = true
         cell?.isScrollable = false
         lineBreakMode = .byWordWrapping
-        placeholderAttributedString = NSAttributedString(
-            string: "a thought, a task, anything...",
-            attributes: [
-                .font: Applied.Capture.bodyFont,
-                .foregroundColor: Applied.Capture.placeholderColor,
-            ]
-        )
+        setPlaceholder(Self.defaultPlaceholder)
         translatesAutoresizingMaskIntoConstraints = false
         setContentHuggingPriority(.defaultLow, for: .vertical)
         setContentCompressionResistancePriority(.defaultLow, for: .vertical)
@@ -28,6 +22,35 @@ final class CaptureField: NSTextField {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
+
+    static let defaultPlaceholder = "a thought, a task, anything..."
+
+    func setPlaceholder(_ text: String) {
+        placeholderAttributedString = NSAttributedString(
+            string: text,
+            attributes: [
+                .font: Applied.Capture.bodyFont,
+                .foregroundColor: Applied.Capture.placeholderColor,
+            ]
+        )
+    }
+
+    // Whole-field tint for the scheduling input, where the entire text is one date directive: the due
+    // color when it parses, plain text otherwise. (DueDateSyntax only highlights a trailing phrase.)
+    func highlightAsDate(valid: Bool) {
+        guard let editor = currentEditor() as? NSTextView, let storage = editor.textStorage else { return }
+        let full = NSRange(location: 0, length: storage.length)
+        guard full.length > 0 else { return }
+        storage.beginEditing()
+        storage.setAttributes(
+            [
+                .font: Applied.Capture.bodyFont,
+                .foregroundColor: valid ? Applied.Capture.inputDueColor : Applied.Capture.textColor,
+            ],
+            range: full
+        )
+        storage.endEditing()
+    }
 
     func refreshTokenHighlight() {
         guard let editor = currentEditor() as? NSTextView,
@@ -47,6 +70,9 @@ final class CaptureField: NSTextField {
         }
         for range in HashtagSyntax.tokenRanges(in: stringValue) {
             storage.addAttribute(.foregroundColor, value: Applied.Capture.inputTagColor, range: range)
+        }
+        for range in DueDateSyntax.tokenRanges(in: stringValue, now: Date()) {
+            storage.addAttribute(.foregroundColor, value: Applied.Capture.inputDueColor, range: range)
         }
         storage.endEditing()
     }
