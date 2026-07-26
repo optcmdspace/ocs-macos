@@ -12,6 +12,20 @@ On release, rename [Unreleased] to [x.y.z] - YYYY-MM-DD and start a new [Unrelea
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-26
+
+### Added
+
+- Due dates. Type a date while capturing (`tomorrow`, `next friday`, `jul 12`, `in 3 days`) and it is set on the entry and highlighted as you type.
+- `d` on a selected list entry to set, change, or clear its due date.
+- `/due` shows an agenda of dated entries grouped by overdue, today, this week, and later.
+
+### Changed
+
+- The list is ordered by due date: overdue and today first, then upcoming, then undated by recency, with done last.
+- Past-due entries collapse into a single `N earlier` row; the right arrow expands it.
+- Long entries wrap to multiple lines in the list instead of being truncated.
+
 ## [0.2.0] - 2026-05-09
 
 ### Added
