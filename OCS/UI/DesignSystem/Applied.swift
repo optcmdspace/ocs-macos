@@ -60,6 +60,9 @@ enum Applied {
 
         static let shortcutSeparator = " · "
         static let shortcutKeyKerning: CGFloat = 2
+        static let tagQueryCaret = "▏"
+        static let tagQueryCaretColor = Theme.Color.accent
+        static let tagQueryCaretBlinkPeriod: TimeInterval = 0.5
         static let terminalMarker = ">"
         static let terminalMarkerColor = Theme.Color.accent
         static let terminalSelectedColor = Theme.Color.accent

@@ -35,6 +35,8 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     private var recentSave: RecentSave?
     private var rejectionToastTask: Task<Void, Never>?
     private var recentRejection: String?
+    private var tagCaretTask: Task<Void, Never>?
+    private var tagCaretVisible = true
     private var keyMonitor: Any?
     private var liveFind: LiveFindCoordinator!
 
@@ -247,14 +249,46 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         layout.panel.setCursorTint(tint)
     }
 
+    // Restarted on each refresh so the caret is solid while typing and blinks when idle.
+    private func restartTagCaretBlink() {
+        tagCaretTask?.cancel()
+        tagCaretVisible = true
+        let period = Applied.Capture.tagQueryCaretBlinkPeriod
+        tagCaretTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(period))
+                if Task.isCancelled { return }
+                await MainActor.run {
+                    guard let self, let state = self.tagEditCoordinator?.state else { return }
+                    self.tagCaretVisible.toggle()
+                    self.layout.setTagPicker(
+                        TagPickerRenderer.attributedString(for: state, caretVisible: self.tagCaretVisible)
+                    )
+                }
+            }
+        }
+    }
+
+    private func stopTagCaretBlink() {
+        tagCaretTask?.cancel()
+        tagCaretTask = nil
+        tagCaretVisible = true
+    }
+
     private func refreshFooter() {
         if let state = tagEditCoordinator?.state {
             layout.footer.setHints(CaptureFooterHints.hints(forTagEdit: state))
             let count = state.currentApplied.count
             layout.footer.setStat(count == 0 ? "no tags" : "\(count) tag\(count == 1 ? "" : "s")")
-            layout.setTagPicker(TagPickerRenderer.attributedString(for: state))
+            if state.query.isEmpty {
+                stopTagCaretBlink()
+            } else {
+                restartTagCaretBlink()
+            }
+            layout.setTagPicker(TagPickerRenderer.attributedString(for: state, caretVisible: tagCaretVisible))
             return
         }
+        stopTagCaretBlink()
         if schedulingEntryId != nil {
             layout.setTagPicker(nil)
             if let message = recentRejection {

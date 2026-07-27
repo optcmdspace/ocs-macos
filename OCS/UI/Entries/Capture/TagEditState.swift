@@ -8,16 +8,39 @@ struct TagEditState: Equatable {
     let originalApplied: Set<String>
     var currentApplied: Set<String>
     var cursor: Int
-    var newTagDraft: String?
+    var query: String
 
-    var allTagNames: [String] {
+    var universe: [String] {
         availableTags.map(\.name) + addedTags
     }
 
+    var matches: [String] {
+        guard !query.isEmpty else { return universe }
+        return universe.filter { $0.hasPrefix(query) }
+    }
+
+    var newTagName: String? {
+        guard !query.isEmpty else { return nil }
+        return TagName(query)?.value
+    }
+
+    // No "+ new" when the query already names a visible tag.
+    var showsNewSlot: Bool {
+        guard let name = newTagName else { return false }
+        return !matches.contains(name)
+    }
+
+    var navigableCount: Int {
+        matches.count + (showsNewSlot ? 1 : 0)
+    }
+
+    var isNewSlotFocused: Bool {
+        showsNewSlot && cursor == matches.count
+    }
+
     var focusedTagName: String? {
-        let names = allTagNames
-        guard cursor >= 0, cursor < names.count else { return nil }
-        return names[cursor]
+        guard cursor >= 0, cursor < matches.count else { return nil }
+        return matches[cursor]
     }
 
     var hasChanges: Bool {
@@ -31,59 +54,52 @@ struct TagEditState: Equatable {
     }
 
     mutating func cursorLeft() {
-        let count = allTagNames.count
+        let count = navigableCount
         guard count > 0 else { return }
         cursor = (cursor - 1 + count) % count
     }
 
     mutating func cursorRight() {
-        let count = allTagNames.count
+        let count = navigableCount
         guard count > 0 else { return }
         cursor = (cursor + 1) % count
     }
 
-    mutating func toggleFocused() {
-        guard let name = focusedTagName else { return }
-        if currentApplied.contains(name) {
-            currentApplied.remove(name)
-        } else {
-            currentApplied.insert(name)
+    mutating func selectFocused() {
+        if isNewSlotFocused {
+            createFromQuery()
+        } else if let name = focusedTagName {
+            if currentApplied.contains(name) {
+                currentApplied.remove(name)
+            } else {
+                currentApplied.insert(name)
+            }
         }
     }
 
-    mutating func appendToDraft(_ char: String) {
-        let current = newTagDraft ?? ""
-        let next = current + char
-        if next.count <= 64 { newTagDraft = next }
+    mutating func appendToQuery(_ char: String) {
+        let next = query + char
+        guard next.count <= 64 else { return }
+        query = next
+        cursor = 0
     }
 
-    mutating func backspaceDraft() {
-        guard var draft = newTagDraft else { return }
-        if draft.isEmpty {
-            newTagDraft = nil
-            return
-        }
-        draft.removeLast()
-        newTagDraft = draft
+    mutating func backspaceQuery() {
+        guard !query.isEmpty else { return }
+        query.removeLast()
+        cursor = 0
     }
 
-    mutating func commitDraft() {
-        guard let draft = newTagDraft, let name = TagName(draft) else {
-            newTagDraft = nil
-            return
-        }
-        newTagDraft = nil
-        let value = name.value
-        if !addedTags.contains(value), !availableTags.contains(where: { $0.name == value }) {
-            addedTags.append(value)
-        }
-        currentApplied.insert(value)
-        if let idx = allTagNames.firstIndex(of: value) {
-            cursor = idx
-        }
+    mutating func clearQuery() {
+        query = ""
+        cursor = 0
     }
 
-    mutating func cancelDraft() {
-        newTagDraft = nil
+    private mutating func createFromQuery() {
+        guard let name = newTagName else { return }
+        if !universe.contains(name) { addedTags.append(name) }
+        currentApplied.insert(name)
+        query = ""
+        cursor = matches.firstIndex(of: name) ?? 0
     }
 }

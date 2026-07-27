@@ -41,11 +41,19 @@ enum CaptureFooterHints {
     }
 
     static func hints(forTagEdit state: TagEditState) -> [Hint] {
-        if state.newTagDraft != nil {
-            return [("⏎", "to add"), ("⌫", "to edit"), ("esc", "to cancel")]
+        var hints: [Hint] = [
+            ("←→", "to move"),
+            ("space", state.isNewSlotFocused ? "to create" : "to toggle"),
+            state.query.isEmpty ? ("type", "to filter") : ("⌫", "to edit"),
+        ]
+        if state.hasChanges {
+            hints.append(("⏎", "to commit"))
+        } else if !state.query.isEmpty {
+            hints.append(("esc", "to clear"))
+        } else {
+            hints.append(("esc", "to back"))
         }
-        let commitOrBack: Hint = state.hasChanges ? ("⏎", "to commit") : ("esc", "to back")
-        return [("←→", "to move"), ("space", "to toggle"), ("any char", "for new"), commitOrBack]
+        return hints
     }
 
     static func stat(from stats: EntryStats?) -> String {

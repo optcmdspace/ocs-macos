@@ -2,6 +2,9 @@ import AppKit
 
 @MainActor
 final class TagEditCoordinator {
+    // Load all tags once; the editor filters in memory, not with a query per keystroke.
+    private static let suggestionLimit = 500
+
     private let dispatchSuggestions: DispatchTagSuggestions
     private let dispatchSetTags: DispatchSetEntryTags
     private let onChange: () -> Void
@@ -28,7 +31,7 @@ final class TagEditCoordinator {
         let entryId = item.id
         let dispatch = dispatchSuggestions
         Task { [weak self] in
-            let suggestions = (try? await dispatch("", 50)) ?? []
+            let suggestions = (try? await dispatch("", Self.suggestionLimit)) ?? []
             await MainActor.run {
                 guard let self else { return }
                 let initialCursor = suggestions.firstIndex(where: { originalApplied.contains($0.name) }) ?? 0
@@ -39,7 +42,7 @@ final class TagEditCoordinator {
                     originalApplied: originalApplied,
                     currentApplied: originalApplied,
                     cursor: initialCursor,
-                    newTagDraft: nil
+                    query: ""
                 )
                 self.onChange()
             }
@@ -72,8 +75,8 @@ final class TagEditCoordinator {
         guard var current = state else { return false }
         switch event.keyCode {
         case CaptureKeyCodes.esc:
-            if current.newTagDraft != nil {
-                current.cancelDraft()
+            if !current.query.isEmpty {
+                current.clearQuery()
                 state = current
                 onChange()
             } else {
@@ -81,38 +84,27 @@ final class TagEditCoordinator {
             }
             return true
         case CaptureKeyCodes.returnKey, CaptureKeyCodes.numpadEnter:
-            if current.newTagDraft != nil {
-                current.commitDraft()
-                state = current
-                onChange()
-            } else {
-                exit(commit: true)
-            }
+            exit(commit: true)
             return true
         case CaptureKeyCodes.leftArrow:
-            guard current.newTagDraft == nil else { return true }
             current.cursorLeft()
             state = current
             onChange()
             return true
         case CaptureKeyCodes.rightArrow:
-            guard current.newTagDraft == nil else { return true }
             current.cursorRight()
             state = current
             onChange()
             return true
         case CaptureKeyCodes.space:
-            if current.newTagDraft != nil { return true }
-            current.toggleFocused()
+            current.selectFocused()
             state = current
             onChange()
             return true
         case CaptureKeyCodes.backspace:
-            if current.newTagDraft != nil {
-                current.backspaceDraft()
-                state = current
-                onChange()
-            }
+            current.backspaceQuery()
+            state = current
+            onChange()
             return true
         default:
             break
@@ -122,7 +114,7 @@ final class TagEditCoordinator {
               CharacterSet.alphanumerics.contains(scalar) else {
             return true
         }
-        current.appendToDraft(String(scalar).lowercased())
+        current.appendToQuery(String(scalar).lowercased())
         state = current
         onChange()
         return true
