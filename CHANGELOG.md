@@ -12,6 +12,17 @@ On release, rename [Unreleased] to [x.y.z] - YYYY-MM-DD and start a new [Unrelea
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-27
+
+### Added
+
+- `/tags` opens a tag manager: every tag listed with a count of the entries using it, filtered as you type. Enter shows that tag's entries. `⌘⌫` archives a tag so it stops appearing in suggestions and the tag picker, and `⌘Z` undoes archives one at a time.
+
+### Changed
+
+- The tag picker (`t` on a selected entry) is now find-or-create: type to filter your tags, move through the matches with the left and right arrows, and pick `+ new <tag>` to create one when nothing matches. Your text shows with a caret as you type.
+- The capture caret matches the color of the token the cursor is in, tinting to the command, tag, or due date under it instead of turning the caret into the same color as the slash command throughout the field.
+
 ## [0.3.0] - 2026-07-26
 
 ### Added
@@ -61,6 +72,8 @@ On release, rename [Unreleased] to [x.y.z] - YYYY-MM-DD and start a new [Unrelea
 - Runs as an accessory app: no Dock icon, no menu bar item.
 - Signed and notarized DMG distribution.
 
-[Unreleased]: https://github.com/optcmdspace/ocs-macos/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/optcmdspace/ocs-macos/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/optcmdspace/ocs-macos/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/optcmdspace/ocs-macos/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/optcmdspace/ocs-macos/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/optcmdspace/ocs-macos/releases/tag/v0.1.0
