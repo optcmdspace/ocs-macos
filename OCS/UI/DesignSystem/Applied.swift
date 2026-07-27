@@ -48,6 +48,7 @@ enum Applied {
         static let glanceVisibleSeconds: TimeInterval = 1
 
         static let savedToastSeconds: TimeInterval = 1
+        static let undoToastSeconds: TimeInterval = 5
 
         static let statColor = Theme.Color.foregroundSubtle
         static let statAccentColor = Theme.Color.accent

@@ -17,6 +17,10 @@ nonisolated final class Projector: Sendable {
             try applyEntryScheduled(e, in: db)
         case let e as TagCreated:
             try applyTagCreated(e, in: db)
+        case let e as TagArchived:
+            try applyTagArchived(e, in: db)
+        case let e as TagUnarchived:
+            try applyTagUnarchived(e, in: db)
         default:
             preconditionFailure("Projector: unknown event \(type(of: event))")
         }
@@ -137,6 +141,32 @@ nonisolated final class Projector: Sendable {
         try db.execute(
             sql: Queries.projectTagFlattenChains,
             arguments: [incomingId, existingId]
+        )
+    }
+
+    private func applyTagArchived(_ event: TagArchived, in db: GRDB.Database) throws {
+        let canonical = try String.fetchOne(
+            db,
+            sql: Queries.selectTagCanonical,
+            arguments: [event.tagId.uuidString]
+        )
+        guard let resolvedTagId = canonical else { return }
+        try db.execute(
+            sql: Queries.projectTagArchived,
+            arguments: [event.createdAt.unixMillis, resolvedTagId]
+        )
+    }
+
+    private func applyTagUnarchived(_ event: TagUnarchived, in db: GRDB.Database) throws {
+        let canonical = try String.fetchOne(
+            db,
+            sql: Queries.selectTagCanonical,
+            arguments: [event.tagId.uuidString]
+        )
+        guard let resolvedTagId = canonical else { return }
+        try db.execute(
+            sql: Queries.projectTagUnarchived,
+            arguments: [resolvedTagId]
         )
     }
 }

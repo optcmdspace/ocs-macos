@@ -4,6 +4,7 @@ nonisolated enum SlashCommand {
     case capture(String)
     case find(text: String?, tags: [TagName], scope: ListRecentEntriesQuery.Scope)
     case dueAgenda
+    case manageTags(query: String?)
     case setSound(Bool)
 
     nonisolated struct Spec: Sendable, Equatable {
@@ -92,10 +93,15 @@ nonisolated enum SlashCommand {
             children: []
         ),
         Node(
+            label: "tags",
+            description: "manage tags, archive unused ones",
+            children: []
+        ),
+        Node(
             label: "set",
             description: "change a setting",
             children: [
-                Node(label: "sound", description: "on/off — tick on save", children: []),
+                Node(label: "sound", description: "on/off, tick on save", children: []),
             ]
         ),
     ]
@@ -134,12 +140,18 @@ nonisolated enum SlashCommand {
         nonisolated static let all: [Verb] = [
             Verb(token: "/find", parse: parseFind),
             Verb(token: "/due", parse: parseDue),
+            Verb(token: "/tags", parse: parseTags),
             Verb(token: "/set", parse: parseSet),
         ]
     }
 
     @Sendable nonisolated private static func parseDue(_ args: [String]) -> SlashCommand? {
         .dueAgenda
+    }
+
+    @Sendable nonisolated private static func parseTags(_ args: [String]) -> SlashCommand? {
+        let rest = args.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        return .manageTags(query: rest.isEmpty ? nil : rest)
     }
 
     @Sendable nonisolated private static func parseFind(_ args: [String]) -> SlashCommand? {

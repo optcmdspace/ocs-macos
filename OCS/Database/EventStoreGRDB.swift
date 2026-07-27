@@ -44,6 +44,10 @@ nonisolated final class EventStoreGRDB: EventStore {
             try insertEntryScheduled(e, in: db)
         case let e as TagCreated:
             try insertTagCreated(e, in: db)
+        case let e as TagArchived:
+            try insertTagArchived(e, in: db)
+        case let e as TagUnarchived:
+            try insertTagUnarchived(e, in: db)
         default:
             preconditionFailure("EventStoreGRDB: unknown event \(type(of: event))")
         }
@@ -121,6 +125,30 @@ nonisolated final class EventStoreGRDB: EventStore {
                 event.id.uuidString,
                 event.tagId.uuidString,
                 event.name,
+                event.deviceId.uuidString,
+                event.createdAt.unixMillis,
+            ]
+        )
+    }
+
+    private static func insertTagArchived(_ event: TagArchived, in db: GRDB.Database) throws {
+        try db.execute(
+            sql: Queries.insertTagEventArchived,
+            arguments: [
+                event.id.uuidString,
+                event.tagId.uuidString,
+                event.deviceId.uuidString,
+                event.createdAt.unixMillis,
+            ]
+        )
+    }
+
+    private static func insertTagUnarchived(_ event: TagUnarchived, in db: GRDB.Database) throws {
+        try db.execute(
+            sql: Queries.insertTagEventUnarchived,
+            arguments: [
+                event.id.uuidString,
+                event.tagId.uuidString,
                 event.deviceId.uuidString,
                 event.createdAt.unixMillis,
             ]

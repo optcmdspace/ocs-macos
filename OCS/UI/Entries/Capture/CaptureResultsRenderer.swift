@@ -49,7 +49,25 @@ enum CaptureResultsRenderer {
             return entriesView(e, sessionItems: sessionItems, singlePreview: singlePreview, freshSavedId: freshSavedId, now: now, trailingMinWidth: trailingMinWidth, bridgeWithPreview: true)
         case .findResults(let e):
             return entriesView(e, sessionItems: sessionItems, singlePreview: singlePreview, freshSavedId: freshSavedId, now: now, trailingMinWidth: trailingMinWidth, bridgeWithPreview: false)
+        case .tags(let t):
+            return tagsView(t)
         }
+    }
+
+    private static func tagsView(_ t: TagManageState) -> View {
+        if t.list.isEmpty {
+            if t.hasError { return .rows([.message("could not load tags")]) }
+            if t.loading { return .clear }
+            return .rows([.message(t.query.isEmpty ? "no tags yet" : "no tags match")])
+        }
+        return .rows(t.list.renderedRows { tag in
+            TerminalRow.Spec(
+                primary: "#\(tag.name)",
+                trailing: "\(tag.usageCount)",
+                trailingMinWidth: Applied.Capture.outputTimestampMinWidth,
+                style: .normal
+            )
+        })
     }
 
     private static func entriesView(

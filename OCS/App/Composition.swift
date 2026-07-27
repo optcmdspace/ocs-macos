@@ -10,6 +10,9 @@ nonisolated final class Composition: Sendable {
     let dispatchEntryStats: @Sendable (_ todayStartMillis: Int64, _ yesterdayStartMillis: Int64, _ staleCutoffMillis: Int64) async throws -> EntryStats
     let dispatchTagSuggestions: DispatchTagSuggestions
     let dispatchSetEntryTags: DispatchSetEntryTags
+    let dispatchListTags: DispatchListTags
+    let dispatchArchiveTag: DispatchArchiveTag
+    let dispatchUnarchiveTag: DispatchUnarchiveTag
 
     #if DEBUG
     let dispatchSeedCapture: @Sendable (_ text: String, _ at: Date) async -> Void
@@ -24,6 +27,9 @@ nonisolated final class Composition: Sendable {
     private let tagsPublishedReads: TagsPublishedReadsGRDB
     private let tagReads: TagReadsGRDB
     private let tagAutocompleteHandler: TagAutocompleteHandler
+    private let listTagsHandler: ListTagsHandler
+    private let archiveTagHandler: ArchiveTagHandler
+    private let unarchiveTagHandler: UnarchiveTagHandler
     private let captureHandler: CaptureEntryHandler
     private let moveHandler: MoveEntryHandler
     private let scheduleHandler: ScheduleEntryHandler
@@ -52,6 +58,9 @@ nonisolated final class Composition: Sendable {
         let tagsPublishedReads = TagsPublishedReadsGRDB(database: database)
         let tagReads = TagReadsGRDB(database: database)
         let tagAutocompleteHandler = TagAutocompleteHandler(store: tagReads)
+        let listTagsHandler = ListTagsHandler(store: tagReads)
+        let archiveTagHandler = ArchiveTagHandler(eventStore: eventStore, ids: ids)
+        let unarchiveTagHandler = UnarchiveTagHandler(eventStore: eventStore, ids: ids)
         let captureHandler = CaptureEntryHandler(
             eventStore: eventStore,
             ids: ids,
@@ -81,6 +90,9 @@ nonisolated final class Composition: Sendable {
         self.tagsPublishedReads = tagsPublishedReads
         self.tagReads = tagReads
         self.tagAutocompleteHandler = tagAutocompleteHandler
+        self.listTagsHandler = listTagsHandler
+        self.archiveTagHandler = archiveTagHandler
+        self.unarchiveTagHandler = unarchiveTagHandler
         self.captureHandler = captureHandler
         self.moveHandler = moveHandler
         self.scheduleHandler = scheduleHandler
@@ -179,6 +191,17 @@ nonisolated final class Composition: Sendable {
                 now: clock.now()
             )
             try await setEntryTagsHandler.handle(cmd)
+        }
+        self.dispatchListTags = { [listTagsHandler] prefix, limit in
+            try await listTagsHandler.handle(ListTagsQuery(prefix: prefix, limit: limit))
+        }
+        self.dispatchArchiveTag = { [archiveTagHandler, clock, deviceId] tagId in
+            let cmd = ArchiveTagCommand(tagId: tagId, deviceId: deviceId, now: clock.now())
+            try await archiveTagHandler.handle(cmd)
+        }
+        self.dispatchUnarchiveTag = { [unarchiveTagHandler, clock, deviceId] tagId in
+            let cmd = UnarchiveTagCommand(tagId: tagId, deviceId: deviceId, now: clock.now())
+            try await unarchiveTagHandler.handle(cmd)
         }
         #if DEBUG
         self.dispatchSeedCapture = { [captureHandler, deviceId] text, at in

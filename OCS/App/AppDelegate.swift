@@ -13,7 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             composition = try Composition()
         } catch {
-            fatalError("OCS: bootstrap failed — \(error)")
+            fatalError("OCS: bootstrap failed: \(error)")
         }
         self.composition = composition
 
@@ -29,7 +29,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             dispatchEntryStats: composition.dispatchEntryStats,
             dispatchTagSuggestions: composition.dispatchTagSuggestions,
             dispatchSetEntryTags: composition.dispatchSetEntryTags,
-            dispatchSchedule: composition.dispatchSchedule
+            dispatchSchedule: composition.dispatchSchedule,
+            dispatchListTags: composition.dispatchListTags,
+            dispatchArchiveTag: composition.dispatchArchiveTag,
+            dispatchUnarchiveTag: composition.dispatchUnarchiveTag
         )
         captureController = controller
 

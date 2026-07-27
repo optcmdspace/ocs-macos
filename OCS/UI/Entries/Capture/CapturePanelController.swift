@@ -16,8 +16,11 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     private let moveDispatcher: EntryMoveDispatcher
     private let dispatchCapture: @Sendable (_ rawText: String) async throws -> EntryListItem
     private let dispatchSchedule: @Sendable (_ entryId: UUID, _ dueAt: Date?) async throws -> Void
+    private let dispatchArchiveTag: DispatchArchiveTag
+    private let dispatchUnarchiveTag: DispatchUnarchiveTag
     private var tagAutocomplete: TagAutocompleteCoordinator!
     private var tagEditCoordinator: TagEditCoordinator!
+    private var tagManage: TagManageCoordinator!
 
     private struct RecentSave {
         let id: UUID
@@ -35,6 +38,10 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     private var recentSave: RecentSave?
     private var rejectionToastTask: Task<Void, Never>?
     private var recentRejection: String?
+    private var archiveToastTask: Task<Void, Never>?
+    private var recentArchivedName: String?
+    // Undo stack for the current /tags session; each ⌘Z restores one archive in place.
+    private var archivedStack: [(tag: TagListItem, index: Int)] = []
     private var tagCaretTask: Task<Void, Never>?
     private var tagCaretVisible = true
     private var keyMonitor: Any?
@@ -48,7 +55,10 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         dispatchEntryStats: @escaping @Sendable (_ todayStartMillis: Int64, _ yesterdayStartMillis: Int64, _ staleCutoffMillis: Int64) async throws -> EntryStats,
         dispatchTagSuggestions: @escaping DispatchTagSuggestions,
         dispatchSetEntryTags: @escaping DispatchSetEntryTags,
-        dispatchSchedule: @escaping @Sendable (_ entryId: UUID, _ dueAt: Date?) async throws -> Void
+        dispatchSchedule: @escaping @Sendable (_ entryId: UUID, _ dueAt: Date?) async throws -> Void,
+        dispatchListTags: @escaping DispatchListTags,
+        dispatchArchiveTag: @escaping DispatchArchiveTag,
+        dispatchUnarchiveTag: @escaping DispatchUnarchiveTag
     ) {
         let layout = CapturePanelLayout.build()
         self.layout = layout
@@ -69,6 +79,8 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         self.moveDispatcher = EntryMoveDispatcher(dispatch: dispatchMove)
         self.dispatchCapture = dispatchCapture
         self.dispatchSchedule = dispatchSchedule
+        self.dispatchArchiveTag = dispatchArchiveTag
+        self.dispatchUnarchiveTag = dispatchUnarchiveTag
 
         super.init()
 
@@ -83,6 +95,14 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         self.liveFind = LiveFindCoordinator(
             dispatch: dispatchEntries,
             pageSize: Self.pageSize,
+            windowSize: windowSize,
+            getPage: { [weak self] in self?.page ?? .idle },
+            setPage: { [weak self] in self?.applyPage($0) },
+            onHeightChange: { [weak self] in self?.updatePanelHeight() }
+        )
+
+        self.tagManage = TagManageCoordinator(
+            dispatch: dispatchListTags,
             windowSize: windowSize,
             getPage: { [weak self] in self?.page ?? .idle },
             setPage: { [weak self] in self?.applyPage($0) },
@@ -125,8 +145,13 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         let raw = layout.field.stringValue
         let cursor = layout.field.currentEditor()?.selectedRange.location ?? (raw as NSString).length
         if !tagAutocomplete.handleFieldChange(raw: raw, cursor: cursor) {
-            if !liveFind.handleFieldChange(raw: raw) {
+            if tagManage.handleFieldChange(raw: raw) {
                 liveFind.cancel()
+            } else if liveFind.handleFieldChange(raw: raw) {
+                tagManage.cancel()
+            } else {
+                liveFind.cancel()
+                tagManage.cancel()
                 let current: SlashSuggestionState = {
                     if case .suggestions(let s) = page { return s }
                     return .empty(windowSize: windowSize)
@@ -154,6 +179,8 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         rejectionToastTask?.cancel()
         rejectionToastTask = nil
         recentRejection = nil
+        clearArchiveUndo()
+        tagManage.cancel()
         sessionItems = []
         stats.reset()
         preview.cancel()
@@ -196,6 +223,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         stats.cancel()
         entries.cancel()
         liveFind.cancel()
+        tagManage.cancel()
         tagAutocomplete.cancel()
         history.cancel()
         savedToastTask?.cancel()
@@ -204,6 +232,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         rejectionToastTask?.cancel()
         rejectionToastTask = nil
         recentRejection = nil
+        clearArchiveUndo()
         sessionItems = []
         singlePreview = nil
         previewLoading = false
@@ -226,6 +255,9 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         if case .suggestions(let s) = next, s.isEmpty {
             normalized = .idle
         }
+        let wasTags = { if case .tags = page { return true } else { return false } }()
+        let willBeTags = { if case .tags = normalized { return true } else { return false } }()
+        if wasTags && !willBeTags { clearArchiveUndo() }
         page = normalized
         refreshInputActive()
         render()
@@ -289,6 +321,18 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             return
         }
         stopTagCaretBlink()
+        if case .tags(let t) = page {
+            layout.setTagPicker(nil)
+            if let name = recentArchivedName {
+                layout.footer.setStat("archived #\(name) · ⌘Z to undo", accent: true)
+                layout.footer.setHints([])
+            } else {
+                let n = t.list.count
+                layout.footer.setStat(n == 0 ? "no tags" : "\(n) tag\(n == 1 ? "" : "s")", accent: false)
+                layout.footer.setHints(CaptureFooterHints.hints(for: page, fieldText: layout.field.stringValue))
+            }
+            return
+        }
         if schedulingEntryId != nil {
             layout.setTagPicker(nil)
             if let message = recentRejection {
@@ -375,6 +419,10 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             toggleFindDone(item: item, in: e)
             return
         }
+        if case .tags(let t) = page {
+            if let selected = t.list.selected { showEntriesForTag(selected) }
+            return
+        }
         let raw: String
         if case .suggestions(let s) = page, let pick = s.selected {
             // Intermediate picks (e.g. "/set") don't parse to a command; treat Enter as Tab so
@@ -403,6 +451,16 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             layout.field.stringValue = ""
             layout.field.refreshTokenHighlight()
             beginDueAgenda()
+        case .manageTags:
+            // Mirror /find: land in the mode with whatever's typed; keep typing to filter.
+            let prefilled = raw.lowercased() == "/tags" ? "/tags " : raw
+            layout.field.stringValue = prefilled
+            if let editor = layout.field.currentEditor() {
+                let len = (prefilled as NSString).length
+                editor.selectedRange = NSRange(location: len, length: 0)
+            }
+            layout.field.refreshTokenHighlight()
+            tagManage.kickoff(raw: prefilled)
         case .setSound(let on):
             CaptureSoundPreference.setEnabled(on)
             layout.field.stringValue = ""
@@ -419,7 +477,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             }
             let parsed = HashtagParser.parse(text)
             if parsed.body.isEmpty {
-                flashRejection("needs body text — tags alone aren't a capture")
+                flashRejection("needs body text, tags alone aren't a capture")
                 return
             }
             CaptureSoundPreference.playIfEnabled()
@@ -830,6 +888,18 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             updatePanelHeight()
             if next.shouldLoadMore { liveFind.loadMore(from: next) }
             return true
+        case .tags(let t):
+            guard !t.list.isEmpty else { return false }
+            let next: TagManageState
+            switch direction {
+            case .down: next = t.cursorDown()
+            case .up: next = t.cursorUp()
+            case .pageDown: next = t.pageDown()
+            case .pageUp: next = t.pageUp()
+            }
+            applyPage(.tags(next))
+            updatePanelHeight()
+            return true
         }
     }
 
@@ -848,11 +918,103 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         applyPage(.entries(e.replacing(at: idx, with: newItem)))
     }
 
+    // Enter on a tag leaves the manager and shows that tag's entries, reusing live /find.
+    private func showEntriesForTag(_ tag: TagListItem) {
+        tagManage.cancel()
+        let raw = "/find #\(tag.name)"
+        layout.field.stringValue = raw
+        if let editor = layout.field.currentEditor() {
+            let len = (raw as NSString).length
+            editor.selectedRange = NSRange(location: len, length: 0)
+        }
+        layout.field.refreshTokenHighlight()
+        liveFind.kickoff(raw: raw)
+    }
+
+    private func archiveSelectedTag() {
+        guard case .tags(let t) = page, let selected = t.list.selected else { return }
+        archiveTag(selected, in: t)
+    }
+
+    // Soft delete: drop the row optimistically and archive in the background. Archiving is
+    // recoverable, so a failed write just logs; the undo stack keeps the row and its position.
+    private func archiveTag(_ tag: TagListItem, in state: TagManageState) {
+        let index = state.list.cursor
+        applyPage(.tags(state.removingSelected()))
+        updatePanelHeight()
+        archivedStack.append((tag: tag, index: index))
+        showArchiveToast(tag.name)
+        let dispatch = dispatchArchiveTag
+        Task {
+            do {
+                try await dispatch(tag.id)
+            } catch {
+                NSLog("OCS: archive tag failed: %@", String(describing: error))
+            }
+        }
+    }
+
+    private func undoArchive() {
+        guard case .tags(let t) = page, let entry = archivedStack.popLast() else { return }
+        archiveToastTask?.cancel()
+        archiveToastTask = nil
+        recentArchivedName = nil
+        applyPage(.tags(t.inserting(entry.tag, at: entry.index)))
+        updatePanelHeight()
+        let dispatch = dispatchUnarchiveTag
+        let tagId = entry.tag.id
+        Task {
+            do {
+                try await dispatch(tagId)
+            } catch {
+                NSLog("OCS: unarchive tag failed: %@", String(describing: error))
+            }
+        }
+    }
+
+    private func showArchiveToast(_ name: String) {
+        archiveToastTask?.cancel()
+        recentArchivedName = name
+        refreshFooter()
+        let seconds = Applied.Capture.undoToastSeconds
+        archiveToastTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            if Task.isCancelled { return }
+            await MainActor.run {
+                guard let self else { return }
+                self.archiveToastTask = nil
+                self.recentArchivedName = nil
+                self.refreshFooter()
+            }
+        }
+    }
+
+    private func clearArchiveUndo() {
+        archiveToastTask?.cancel()
+        archiveToastTask = nil
+        recentArchivedName = nil
+        archivedStack = []
+    }
+
     private func installKeyMonitor() {
         uninstallKeyMonitor()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
-            if event.modifierFlags.contains(.command) { return event }
+            if event.modifierFlags.contains(.command) {
+                if case .tags = self.page {
+                    if event.keyCode == CaptureKeyCodes.backspace {
+                        self.archiveSelectedTag()
+                        return nil
+                    }
+                    if event.charactersIgnoringModifiers == "z",
+                       !event.modifierFlags.contains(.shift),
+                       !self.archivedStack.isEmpty {
+                        self.undoArchive()
+                        return nil
+                    }
+                }
+                return event
+            }
             // Scheduling: let every key reach the field; Enter/Esc route through perform().
             if self.schedulingEntryId != nil { return event }
             if self.tagEditCoordinator.isActive {
