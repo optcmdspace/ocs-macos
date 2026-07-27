@@ -48,7 +48,18 @@ final class BlockCursorTextView: NSTextView {
     @objc private func handleTextOrSelectionChange() {
         guard isCursorActive, !cursorView.isHidden else { return }
         repositionCursor()
+        syncTintToCaretGlyph()
         startBlink()
+    }
+
+    func syncTintToCaretGlyph() {
+        guard let storage = textStorage, storage.length > 0 else {
+            cursorTint = Applied.Capture.cursorColor
+            return
+        }
+        let glyph = min(max(selectedRange().location - 1, 0), storage.length - 1)
+        let color = storage.attribute(.foregroundColor, at: glyph, effectiveRange: nil) as? NSColor
+        cursorTint = color ?? Applied.Capture.textColor
     }
 
     func setCursorActive(_ active: Bool) {
@@ -72,6 +83,7 @@ final class BlockCursorTextView: NSTextView {
     private func showAndBlink() {
         cursorView.isHidden = false
         repositionCursor()
+        syncTintToCaretGlyph()
         startBlink()
     }
 

@@ -271,14 +271,6 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         else if case .entries = page { active = false } else { active = true }
         layout.prompt.setActive(active)
         layout.panel.setCursorActive(active)
-        refreshCursorTint()
-    }
-
-    private func refreshCursorTint() {
-        let tint: NSColor = SlashCommand.leadingCommandRange(in: layout.field.stringValue) != nil
-            ? Applied.Capture.commandColor
-            : Applied.Capture.cursorColor
-        layout.panel.setCursorTint(tint)
     }
 
     // Restarted on each refresh so the caret is solid while typing and blinks when idle.

@@ -50,6 +50,7 @@ final class CaptureField: NSTextField {
             range: full
         )
         storage.endEditing()
+        (editor as? BlockCursorTextView)?.syncTintToCaretGlyph()
     }
 
     func refreshTokenHighlight() {
@@ -75,6 +76,7 @@ final class CaptureField: NSTextField {
             storage.addAttribute(.foregroundColor, value: Applied.Capture.inputDueColor, range: range)
         }
         storage.endEditing()
+        (editor as? BlockCursorTextView)?.syncTintToCaretGlyph()
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
