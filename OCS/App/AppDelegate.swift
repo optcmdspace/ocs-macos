@@ -7,6 +7,7 @@ import os
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var composition: Composition?
     private var captureController: CapturePanelController?
+    private var updater: UpdaterController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let composition: Composition
@@ -32,7 +33,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             dispatchSchedule: composition.dispatchSchedule,
             dispatchListTags: composition.dispatchListTags,
             dispatchArchiveTag: composition.dispatchArchiveTag,
-            dispatchUnarchiveTag: composition.dispatchUnarchiveTag
+            dispatchUnarchiveTag: composition.dispatchUnarchiveTag,
+            onCheckForUpdates: { [weak self] in self?.updater?.checkForUpdates() }
         )
         captureController = controller
 
@@ -43,6 +45,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         registerAsLoginItemIfNeeded()
+
+        // Start the updater last, once the hotkey is armed.
+        updater = UpdaterController()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

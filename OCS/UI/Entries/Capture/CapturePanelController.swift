@@ -18,6 +18,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
     private let dispatchSchedule: @Sendable (_ entryId: UUID, _ dueAt: Date?) async throws -> Void
     private let dispatchArchiveTag: DispatchArchiveTag
     private let dispatchUnarchiveTag: DispatchUnarchiveTag
+    private let onCheckForUpdates: () -> Void
     private var tagAutocomplete: TagAutocompleteCoordinator!
     private var tagEditCoordinator: TagEditCoordinator!
     private var tagManage: TagManageCoordinator!
@@ -58,7 +59,8 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         dispatchSchedule: @escaping @Sendable (_ entryId: UUID, _ dueAt: Date?) async throws -> Void,
         dispatchListTags: @escaping DispatchListTags,
         dispatchArchiveTag: @escaping DispatchArchiveTag,
-        dispatchUnarchiveTag: @escaping DispatchUnarchiveTag
+        dispatchUnarchiveTag: @escaping DispatchUnarchiveTag,
+        onCheckForUpdates: @escaping () -> Void
     ) {
         let layout = CapturePanelLayout.build()
         self.layout = layout
@@ -81,6 +83,7 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
         self.dispatchSchedule = dispatchSchedule
         self.dispatchArchiveTag = dispatchArchiveTag
         self.dispatchUnarchiveTag = dispatchUnarchiveTag
+        self.onCheckForUpdates = onCheckForUpdates
 
         super.init()
 
@@ -462,6 +465,11 @@ final class CapturePanelController: NSObject, NSTextFieldDelegate, NSWindowDeleg
             } else {
                 dismiss()
             }
+        case .checkForUpdates:
+            // Dismiss first so Sparkle's own window comes forward with focus.
+            layout.field.stringValue = ""
+            dismiss()
+            onCheckForUpdates()
         case .capture(let text):
             guard !text.isEmpty else {
                 if !keepOpen { dismiss() }

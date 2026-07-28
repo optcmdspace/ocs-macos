@@ -205,6 +205,59 @@ jobs:
           xcrun stapler validate "${{ steps.meta.outputs.dmg_path }}"
           xcrun stapler validate "${{ steps.meta.outputs.stable_dmg_path }}"
 
+      - name: Sign update and build appcast
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          # Keep this in sync with the Sparkle version in Package.resolved.
+          SPARKLE_VERSION: '2.9.4'
+          VERSION: ${{ steps.meta.outputs.version }}
+          BUILD: ${{ github.run_number }}
+          DMG: ${{ steps.meta.outputs.dmg_path }}
+        run: |
+          set -euo pipefail
+
+          # Fetch Sparkle's sign_update tool. Pinned to match the framework version.
+          curl -fsSL -o sparkle.tar.xz \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+          mkdir -p sparkle-tools
+          tar -xf sparkle.tar.xz -C sparkle-tools
+          SIGN=$(find sparkle-tools -type f -name sign_update | head -1)
+          chmod +x "$SIGN"
+
+          # Sign the exact stapled DMG bytes that get uploaded. Order matters:
+          # this runs after stapling, since stapling rewrites the DMG.
+          KEY_FILE="$RUNNER_TEMP/sparkle_ed_private_key"
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$KEY_FILE"
+          SIG_ATTRS=$("$SIGN" --ed-key-file "$KEY_FILE" "$DMG")
+          rm -f "$KEY_FILE"
+
+          DMG_NAME=$(basename "$DMG")
+          DMG_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${DMG_NAME}"
+          PUBDATE=$(date "+%a, %d %b %Y %H:%M:%S %z")
+
+          APPCAST="$BUILD_DIR/appcast.xml"
+          cat > "$APPCAST" <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+            <channel>
+              <title>OCS</title>
+              <item>
+                <title>${VERSION}</title>
+                <pubDate>${PUBDATE}</pubDate>
+                <sparkle:version>${BUILD}</sparkle:version>
+                <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+                <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+                <sparkle:releaseNotesLink>https://optcmd.space/changelog</sparkle:releaseNotesLink>
+                <enclosure url="${DMG_URL}" ${SIG_ATTRS} type="application/octet-stream" />
+              </item>
+            </channel>
+          </rss>
+          EOF
+
+          echo "APPCAST_PATH=$APPCAST" >> "$GITHUB_ENV"
+          echo "Generated appcast:"
+          cat "$APPCAST"
+
       - name: Summarize release
         id: summary
         run: |
@@ -261,12 +314,12 @@ jobs:
           NOTES_PATH: ${{ steps.notes.outputs.path }}
         run: |
           if [ "$NOTES_FOUND" = "true" ]; then
-            gh release create "$TAG" "$DMG" "$STABLE_DMG" \
+            gh release create "$TAG" "$DMG" "$STABLE_DMG" "$APPCAST_PATH" \
               --title "$TAG" \
               --notes-file "$NOTES_PATH" \
               --verify-tag
           else
-            gh release create "$TAG" "$DMG" "$STABLE_DMG" \
+            gh release create "$TAG" "$DMG" "$STABLE_DMG" "$APPCAST_PATH" \
               --title "$TAG" \
               --generate-notes \
               --verify-tag

@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict/>
+<dict>
+	<key>SUFeedURL</key>
+	<string>https://github.com/optcmdspace/ocs-macos/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>/qjgYGLPrvNd43A+FAj8KRF3HDrcLQlenYylWzX7v5A=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUEnableSystemProfiling</key>
+	<false/>
+</dict>
 </plist>

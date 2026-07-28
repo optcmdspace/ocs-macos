@@ -6,6 +6,7 @@ nonisolated enum SlashCommand {
     case dueAgenda
     case manageTags(query: String?)
     case setSound(Bool)
+    case checkForUpdates
 
     nonisolated struct Spec: Sendable, Equatable {
         // What the row shows ("/find", "/set" at the top; "sound" once you've descended into /set).
@@ -104,6 +105,11 @@ nonisolated enum SlashCommand {
                 Node(label: "sound", description: "on/off, tick on save", children: []),
             ]
         ),
+        Node(
+            label: "update",
+            description: "check for a new version",
+            children: []
+        ),
     ]
 
     private nonisolated static let topLevelSpecs: [Spec] = tree.map {
@@ -142,7 +148,12 @@ nonisolated enum SlashCommand {
             Verb(token: "/due", parse: parseDue),
             Verb(token: "/tags", parse: parseTags),
             Verb(token: "/set", parse: parseSet),
+            Verb(token: "/update", parse: parseUpdate),
         ]
+    }
+
+    @Sendable nonisolated private static func parseUpdate(_ args: [String]) -> SlashCommand? {
+        .checkForUpdates
     }
 
     @Sendable nonisolated private static func parseDue(_ args: [String]) -> SlashCommand? {
