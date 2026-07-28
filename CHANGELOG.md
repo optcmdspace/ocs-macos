@@ -12,6 +12,12 @@ On release, rename [Unreleased] to [x.y.z] - YYYY-MM-DD and start a new [Unrelea
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-28
+
+### Added
+
+- Automatic updates: OCS checks for a new version in the background and offers to install it. `/update` runs the check on demand.
+
 ## [0.4.0] - 2026-07-27
 
 ### Added
@@ -72,7 +78,8 @@ On release, rename [Unreleased] to [x.y.z] - YYYY-MM-DD and start a new [Unrelea
 - Runs as an accessory app: no Dock icon, no menu bar item.
 - Signed and notarized DMG distribution.
 
-[Unreleased]: https://github.com/optcmdspace/ocs-macos/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/optcmdspace/ocs-macos/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/optcmdspace/ocs-macos/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/optcmdspace/ocs-macos/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/optcmdspace/ocs-macos/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/optcmdspace/ocs-macos/compare/v0.1.0...v0.2.0
